@@ -787,7 +787,7 @@ const App = () => {
             </button>
           </div>
           <div className="absolute bottom-12 left-6 text-white">
-            <h1 className="text-3xl font-bold tracking-tight mb-1 drop-shadow-lg">Space Mariachi</h1>
+            <h1 className="text-3xl font-bold tracking-tight mb-1 drop-shadow-lg">Welcome Ayush</h1>
             <p className="text-sm text-white/80 font-medium">34m Monthly Listener</p>
           </div>
         </div>
