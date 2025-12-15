@@ -335,7 +335,7 @@ const App = () => {
         {/* Header Image */}
         <div className="relative h-[45%] w-full overflow-hidden">
           <img 
-            src="https://images.unsplash.com/photo-1568481947814-22b9f6266023?q=80&w=1000&auto=format&fit=crop" 
+            src="https://images.unsplash.com/photo-1471958680802-1345a694ba6d?q=80&w=1000&auto=format&fit=crop" 
             alt="Artist" 
             className="w-full h-full object-cover filter brightness-90"
           />
