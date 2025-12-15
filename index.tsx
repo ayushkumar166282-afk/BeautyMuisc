@@ -500,7 +500,7 @@ const App = () => {
       )}
 
       {/* --- List View --- */}
-      <div className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${darkMode ? 'bg-slate-900' : 'bg-gray-50'} will-change-transform ${view === 'player' ? 'scale-90 opacity-0 pointer-events-none blur-sm' : 'scale-100 opacity-100 blur-0'}`}>
+      <div className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${darkMode ? 'bg-slate-900' : 'bg-gray-50'} will-change-transform ${view === 'player' ? 'scale-92 opacity-0 pointer-events-none blur-md' : 'scale-100 opacity-100 blur-0'}`}>
         <div className="relative h-[45%] w-full overflow-hidden">
           <img src="https://images.unsplash.com/photo-1471958680802-1345a694ba6d?q=80&w=1000&auto=format&fit=crop" alt="Artist" className="w-full h-full object-cover filter brightness-90 transition-transform duration-[10s] hover:scale-110"/>
           <button className="absolute top-6 left-6 p-2 bg-white/20 backdrop-blur-md rounded-full text-white">
@@ -615,26 +615,26 @@ const App = () => {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.4)_100%)] pointer-events-none z-0"></div>
 
           {/* 1. Header (Top Controls) */}
-          <div className="w-full flex justify-between items-center p-6 relative z-10 mt-safe">
+          <div className="w-full flex justify-between items-center p-6 relative z-50 mt-safe pointer-events-none">
               <button 
                 onClick={() => setView('list')}
-                className="w-10 h-10 bg-white/10 backdrop-blur-lg border border-white/10 rounded-lg flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                className="w-12 h-12 bg-white/10 backdrop-blur-lg border border-white/10 rounded-2xl flex items-center justify-center text-white hover:bg-white/20 active:scale-90 transition-all duration-300 pointer-events-auto shadow-lg shadow-black/10"
               >
-                  <ChevronDown size={20} />
+                  <ChevronDown size={24} />
               </button>
               <button 
                  onClick={() => setShowSettings(true)}
-                 className="w-10 h-10 bg-white/10 backdrop-blur-lg border border-white/10 rounded-lg flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                 className="w-12 h-12 bg-white/10 backdrop-blur-lg border border-white/10 rounded-2xl flex items-center justify-center text-white hover:bg-white/20 active:scale-90 transition-all duration-300 pointer-events-auto shadow-lg shadow-black/10"
               >
-                  <MoreHorizontal size={20} />
+                  <MoreHorizontal size={24} />
               </button>
           </div>
 
           {/* 2. Space Vector Background Elements (Absolute) */}
           {/* Orange Planet Top-Left */}
-          <div className="absolute -top-16 -left-16 w-64 h-64 bg-gradient-to-br from-[#FF9F43] to-[#FF8000] rounded-full opacity-90 blur-2xl"></div>
+          <div className="absolute -top-16 -left-16 w-64 h-64 bg-gradient-to-br from-[#FF9F43] to-[#FF8000] rounded-full opacity-90 blur-2xl pointer-events-none"></div>
           {/* Pink Ring Top-Right */}
-          <div className="absolute -top-12 -right-24 w-80 h-80 rounded-full border-[60px] border-[#FF6B81] opacity-90 blur-xl"></div>
+          <div className="absolute -top-12 -right-24 w-80 h-80 rounded-full border-[60px] border-[#FF6B81] opacity-90 blur-xl pointer-events-none"></div>
           {/* Faint Orbit Lines */}
           <div className="absolute top-1/4 left-[-10%] w-[120%] h-64 border border-white/5 rounded-[100%] rotate-12 scale-110 pointer-events-none"></div>
 
