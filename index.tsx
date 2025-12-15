@@ -4,7 +4,7 @@ import {
   Play, Pause, SkipBack, SkipForward, Heart, Repeat, 
   ChevronLeft, MoreHorizontal, ListMusic, Plus,
   Disc, Mic2, Music, Download, X, Share, Menu,
-  Moon, Activity, Folder, ChevronDown
+  Moon, Activity, Folder, ChevronDown, Youtube, LogIn
 } from 'lucide-react';
 
 // --- Types ---
@@ -17,6 +17,7 @@ interface Song {
   cover: string;
   src: string;
   color?: string;
+  source?: 'local' | 'server' | 'youtube'; // Track source
   // For DB storage
   fileBlob?: Blob; 
 }
@@ -64,7 +65,8 @@ const loadSongsFromDB = async (): Promise<Song[]> => {
         const storedSongs = request.result;
         const songs = storedSongs.map((s: any) => ({
           ...s,
-          src: URL.createObjectURL(s.fileBlob)
+          src: URL.createObjectURL(s.fileBlob),
+          source: 'local'
         }));
         resolve(songs);
       };
@@ -85,7 +87,8 @@ const SERVER_SONGS: Song[] = [
     duration: 184,
     cover: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop',
     src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3',
-    color: 'bg-blue-500'
+    color: 'bg-blue-500',
+    source: 'server'
   },
   {
     id: '2',
@@ -95,7 +98,8 @@ const SERVER_SONGS: Song[] = [
     duration: 210,
     cover: 'https://images.unsplash.com/photo-1493225255756-d9584f8606e9?q=80&w=1000&auto=format&fit=crop',
     src: 'https://cdn.pixabay.com/audio/2022/10/25/audio_55940d99ba.mp3',
-    color: 'bg-pink-500'
+    color: 'bg-pink-500',
+    source: 'server'
   },
   {
     id: '3',
@@ -105,7 +109,143 @@ const SERVER_SONGS: Song[] = [
     duration: 195,
     cover: 'https://images.unsplash.com/photo-1487180144351-b8472da7d4f1?q=80&w=1000&auto=format&fit=crop',
     src: 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3',
-    color: 'bg-green-500'
+    color: 'bg-green-500',
+    source: 'server'
+  }
+];
+
+const YOUTUBE_MOCK_SONGS: Song[] = [
+  {
+    id: 'yt-1',
+    title: 'Midnight City (AI Remix)',
+    artist: 'Neural Network',
+    album: 'YouTube AI Hits',
+    duration: 240,
+    cover: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2023/10/24/audio_3a887b4699.mp3',
+    color: 'bg-red-600',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-2',
+    title: 'Starlight Dreams',
+    artist: 'Cyber Pulse',
+    album: 'YouTube AI Hits',
+    duration: 210,
+    cover: 'https://images.unsplash.com/photo-1516280440614-6697288d5d38?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2023/09/06/audio_0313b5e40e.mp3',
+    color: 'bg-purple-500',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-3',
+    title: 'Digital Rain',
+    artist: 'Matrix Node',
+    album: 'Generative Beats',
+    duration: 185,
+    cover: 'https://images.unsplash.com/photo-1535378437323-95558417831e?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3',
+    color: 'bg-green-500',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-4',
+    title: 'Neon Glitch',
+    artist: 'Error 404',
+    album: 'Cyberpunk Lo-Fi',
+    duration: 160,
+    cover: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2022/10/25/audio_55940d99ba.mp3',
+    color: 'bg-pink-600',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-5',
+    title: 'Quantum Loop',
+    artist: 'Q-Bit',
+    album: 'Physics of Sound',
+    duration: 220,
+    cover: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3',
+    color: 'bg-blue-600',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-6',
+    title: 'Synthetic Soul',
+    artist: 'Deep Mind',
+    album: 'Artificial Emotion',
+    duration: 195,
+    cover: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2023/10/24/audio_3a887b4699.mp3',
+    color: 'bg-indigo-500',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-7',
+    title: 'Binary Heart',
+    artist: 'Robot Soul',
+    album: 'Machine Learning',
+    duration: 205,
+    cover: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2023/09/06/audio_0313b5e40e.mp3',
+    color: 'bg-gray-600',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-8',
+    title: 'Algorithm Flow',
+    artist: 'Data Stream',
+    album: 'Big Data',
+    duration: 175,
+    cover: 'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3',
+    color: 'bg-teal-500',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-9',
+    title: 'Virtual Escape',
+    artist: 'V-Real',
+    album: 'Metaverse Mix',
+    duration: 245,
+    cover: 'https://images.unsplash.com/photo-1614728853913-1e221162d04a?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2022/10/25/audio_55940d99ba.mp3',
+    color: 'bg-violet-600',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-10',
+    title: 'System Pulse',
+    artist: 'Mainframe',
+    album: 'Server Room',
+    duration: 190,
+    cover: 'https://images.unsplash.com/photo-1558494949-ef526b01201b?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3',
+    color: 'bg-orange-500',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-11',
+    title: 'Cloud Surfer',
+    artist: 'Sky Net',
+    album: 'Upload Complete',
+    duration: 215,
+    cover: 'https://images.unsplash.com/photo-1593642532744-d377ab507dc8?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2023/10/24/audio_3a887b4699.mp3',
+    color: 'bg-sky-500',
+    source: 'youtube'
+  },
+  {
+    id: 'yt-12',
+    title: 'Logic Gate',
+    artist: 'Processor',
+    album: 'Silicon Valley',
+    duration: 165,
+    cover: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?q=80&w=1000&auto=format&fit=crop',
+    src: 'https://cdn.pixabay.com/audio/2023/09/06/audio_0313b5e40e.mp3',
+    color: 'bg-emerald-600',
+    source: 'youtube'
   }
 ];
 
@@ -115,6 +255,11 @@ const formatTime = (time: number) => {
   const minutes = Math.floor(time / 60);
   const seconds = Math.floor(time % 60);
   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+};
+
+const formatRulerTime = (time: number) => {
+  if (time < 60) return time.toString();
+  return formatTime(time);
 };
 
 // --- Components ---
@@ -134,6 +279,34 @@ const App = () => {
   const [eqPreset, setEqPreset] = useState('Flat');
   const [showMyUploads, setShowMyUploads] = useState(false);
 
+  // YouTube Integration
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
+  const [isConnectingYT, setIsConnectingYT] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<'all' | 'youtube'>('all');
+
+  // Liked Songs
+  const [likedIds, setLikedIds] = useState<Set<string>>(() => {
+      try {
+        const saved = localStorage.getItem('space_music_liked_ids');
+        return saved ? new Set(JSON.parse(saved)) : new Set();
+      } catch (e) { return new Set(); }
+  });
+  const [showLikedSongs, setShowLikedSongs] = useState(false);
+
+  useEffect(() => {
+      localStorage.setItem('space_music_liked_ids', JSON.stringify(Array.from(likedIds)));
+  }, [likedIds]);
+
+  const toggleLike = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      setLikedIds(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+      });
+  };
+
   // Install
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -142,17 +315,46 @@ const App = () => {
   
   // Timeline dragging
   const rulerRef = useRef<HTMLDivElement>(null);
+  const ticksRef = useRef<HTMLDivElement>(null); // Ref for the moving container
   const isDraggingRef = useRef(false);
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadedSongs = playlist.filter(s => s.artist === 'Local Upload');
+  const uploadedSongs = playlist.filter(s => s.source === 'local');
+  const displayPlaylist = libraryTab === 'youtube' 
+    ? playlist.filter(s => s.source === 'youtube')
+    : playlist.filter(s => s.source !== 'youtube');
+
+  // --- Scrolling Ruler Logic ---
+  const PIXELS_PER_SECOND = 15; 
+  const TICK_SPACING = 15; // Space between each second tick
+
+  // Smooth Animation Loop
+  useEffect(() => {
+    let rafId: number;
+    const animate = () => {
+        if (ticksRef.current && audioRef.current) {
+            // Read directly from audio element for 60fps smoothness, fallback to 0
+            const t = audioRef.current.currentTime || 0;
+            // Update the transform directly on the DOM element
+            ticksRef.current.style.transform = `translateX(-${t * PIXELS_PER_SECOND}px)`;
+        }
+        rafId = requestAnimationFrame(animate);
+    };
+    rafId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafId);
+  }, []); // Runs continuously
 
   useEffect(() => {
     loadSongsFromDB().then(savedSongs => {
       if (savedSongs.length > 0) {
-        setPlaylist([...SERVER_SONGS, ...savedSongs]);
+        setPlaylist(prev => {
+             // Avoid duplicates if simple id check
+             const ids = new Set(prev.map(p => p.id));
+             const newSongs = savedSongs.filter(s => !ids.has(s.id));
+             return [...prev, ...newSongs];
+        });
       }
     });
   }, []);
@@ -227,6 +429,7 @@ const App = () => {
     navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
     
     navigator.mediaSession.setActionHandler('previoustrack', () => {
+        // Logic might need to be smarter about the source playlist
         const idx = playlist.findIndex(s => s.id === currentSong.id);
         const prevIdx = (idx - 1 + playlist.length) % playlist.length;
         setCurrentSong(playlist[prevIdx]);
@@ -281,6 +484,8 @@ const App = () => {
 
   const nextSong = () => {
     if (!currentSong) return;
+    // Find current index in full playlist to allow cross-source play if desired
+    // Or filter based on current view. Let's do full playlist for continuous play.
     const idx = playlist.findIndex(s => s.id === currentSong.id);
     const nextIdx = (idx + 1) % playlist.length;
     setCurrentSong(playlist[nextIdx]);
@@ -304,10 +509,6 @@ const App = () => {
     }
   };
 
-  // --- Scrolling Ruler Logic ---
-  const PIXELS_PER_SECOND = 20; // Matches visual spacing in image
-  const TICK_SPACING = 20; // 1 second = 20px
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -320,12 +521,23 @@ const App = () => {
         duration: 0,
         cover: 'https://images.unsplash.com/photo-1619983081563-430f63602796?q=80&w=1000&auto=format&fit=crop',
         src: url,
-        color: 'bg-purple-500'
+        color: 'bg-purple-500',
+        source: 'local'
       };
       setPlaylist(prev => [...prev, newSong]);
       playSong(newSong);
       saveSongToDB(newSong, file);
     }
+  };
+
+  const connectYouTube = () => {
+      setIsConnectingYT(true);
+      // Simulate API delay
+      setTimeout(() => {
+          setYoutubeConnected(true);
+          setIsConnectingYT(false);
+          setPlaylist(prev => [...prev, ...YOUTUBE_MOCK_SONGS]);
+      }, 2000);
   };
 
   return (
@@ -464,6 +676,66 @@ const App = () => {
         </div>
       )}
 
+      {/* --- Liked Songs Modal --- */}
+      {showLikedSongs && (
+        <div className="absolute inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-xl p-4 animate-in fade-in zoom-in-95 duration-300">
+           <div className={`w-full h-full max-w-md rounded-[2rem] p-6 shadow-2xl overflow-hidden flex flex-col relative transition-colors ${darkMode ? 'bg-slate-800/95 text-white' : 'bg-white/95 text-gray-800'}`}>
+             <div className="flex items-center justify-between mb-6">
+                <div>
+                   <h2 className="text-2xl font-bold">Liked Songs</h2>
+                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{likedIds.size} tracks</p>
+                </div>
+                <button onClick={() => setShowLikedSongs(false)} className={`p-2 rounded-full ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                  <X size={20} />
+                </button>
+             </div>
+             <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">
+               {playlist.filter(s => likedIds.has(s.id)).length === 0 ? (
+                 <div className="h-full flex flex-col items-center justify-center opacity-40">
+                    <Heart size={64} className="mb-4 text-pink-500" />
+                    <p className="font-medium">No liked songs yet</p>
+                    <p className="text-sm">Tap the heart to add songs</p>
+                 </div>
+               ) : (
+                 playlist.filter(s => likedIds.has(s.id)).map(song => (
+                    <div 
+                      key={song.id}
+                      onClick={() => playSong(song)}
+                      className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${
+                        currentSong?.id === song.id ? (darkMode ? 'bg-pink-500/20' : 'bg-pink-50') : (darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')
+                      }`}
+                    >
+                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white ${song.color || 'bg-pink-500'}`}>
+                          {currentSong?.id === song.id && isPlaying ? <Activity size={18} className="animate-pulse"/> : <Music size={18} />}
+                       </div>
+                       <div className="ml-3 flex-1 overflow-hidden">
+                          <h4 className={`font-bold truncate ${currentSong?.id === song.id ? 'text-pink-500' : ''}`}>{song.title}</h4>
+                          <p className="text-xs opacity-60 truncate">{song.artist}</p>
+                       </div>
+                       <button onClick={(e) => toggleLike(e, song.id)} className="p-2 text-pink-500 hover:scale-110 transition-transform">
+                           <Heart size={18} fill="currentColor" />
+                       </button>
+                    </div>
+                 ))
+               )}
+             </div>
+             {likedIds.size > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200/10 text-center">
+                   <button 
+                     onClick={() => { 
+                         const liked = playlist.filter(s => likedIds.has(s.id));
+                         if(liked.length > 0) playSong(liked[0]); 
+                     }}
+                     className="w-full py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                   >
+                      <Play size={18} fill="white" /> Play All
+                   </button>
+                </div>
+             )}
+           </div>
+        </div>
+      )}
+
       {/* --- Install Help --- */}
       {showInstallHelp && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in">
@@ -507,11 +779,9 @@ const App = () => {
             <ChevronLeft size={24} />
           </button>
           <div className="absolute top-6 right-6 flex gap-2">
-            {!isStandalone && (
-              <button onClick={handleInstallClick} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white animate-pulse active:scale-90 transition-transform">
-                <Download size={24} />
-              </button>
-            )}
+            <button onClick={() => setShowLikedSongs(true)} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-pink-500/20 transition-colors active:scale-90">
+              <Heart size={24} fill={likedIds.size > 0 ? "white" : "none"} />
+            </button>
             <button onClick={() => setShowSettings(true)} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white">
               <MoreHorizontal size={24} />
             </button>
@@ -525,59 +795,119 @@ const App = () => {
           {isPlaying && view === 'list' ? <Pause size={28} fill="white" /> : <Play size={28} fill="white" className="ml-1" />}
         </button>
         <div className={`relative -mt-8 rounded-t-[3rem] h-[60%] px-6 pt-10 pb-32 overflow-y-auto no-scrollbar z-10 transition-colors ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
-          <div className="mb-8">
-            <h2 className={`font-bold mb-4 ml-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Albums</h2>
-            <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-              <div className="flex-shrink-0 w-36 h-40 bg-blue-400 rounded-2xl p-4 flex flex-col justify-end shadow-lg shadow-blue-200 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/20 rounded-full -mr-10 -mt-10 blur-xl"></div>
-                <ListMusic className="text-white mb-auto opacity-80" size={24} />
-                <p className="text-white font-bold text-lg leading-tight">Intergalaxy</p>
-                <p className="text-blue-100 text-xs mt-1">8 Songs</p>
-              </div>
-              <div className="flex-shrink-0 w-36 h-40 bg-orange-400 rounded-2xl p-4 flex flex-col justify-end shadow-lg shadow-orange-200 relative overflow-hidden">
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/20 rounded-full -ml-12 -mb-12 blur-xl"></div>
-                 <Play className="text-white mb-auto opacity-80" size={24} fill="white"/>
-                <p className="text-white font-bold text-lg leading-tight">Fault</p>
-                <p className="text-orange-100 text-xs mt-1">10 Songs</p>
-              </div>
-               <div onClick={() => setShowMyUploads(true)} className="flex-shrink-0 w-36 h-40 bg-purple-500 rounded-2xl p-4 flex flex-col justify-end shadow-lg shadow-purple-200 relative overflow-hidden cursor-pointer active:scale-95 transition-transform">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/20 rounded-full -mr-10 -mt-10 blur-xl"></div>
-                  <Folder className="text-white mb-auto opacity-80" size={24} />
-                  <p className="text-white font-bold text-lg leading-tight">My Files</p>
-                  <p className="text-purple-200 text-xs mt-1">{uploadedSongs.length} Songs</p>
-               </div>
-               <div onClick={() => fileInputRef.current?.click()} className={`flex-shrink-0 w-36 h-40 border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-gray-100 border-gray-300'}`}>
-                  <Plus className={darkMode ? 'text-slate-500' : 'text-gray-400 mb-2'} size={32} />
-                  <p className={`font-medium text-sm ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>Upload</p>
-                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="audio/*" className="hidden" />
-               </div>
-            </div>
+          <div className="mb-6 flex justify-between items-center">
+             <div className="flex gap-4">
+               <button onClick={() => setLibraryTab('all')} className={`text-lg font-bold transition-colors ${libraryTab === 'all' ? (darkMode ? 'text-white' : 'text-gray-900') : 'text-gray-400'}`}>Library</button>
+               <button onClick={() => setLibraryTab('youtube')} className={`text-lg font-bold flex items-center gap-1 transition-colors ${libraryTab === 'youtube' ? 'text-red-500' : 'text-gray-400'}`}>
+                  <Youtube size={20} /> YouTube
+               </button>
+             </div>
           </div>
-          <div>
-            <h2 className={`font-bold mb-4 ml-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Songs</h2>
-            <div className="space-y-4">
-              {playlist.map((song) => (
-                <div key={song.id} onClick={() => playSong(song)} className={`flex items-center p-3 rounded-2xl transition-all duration-300 ${currentSong?.id === song.id ? (darkMode ? 'bg-blue-900/40 shadow-lg shadow-blue-900/20' : 'bg-blue-50 shadow-md shadow-blue-100/50') : (darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}>
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md ${song.color || 'bg-gray-400'}`}>
-                    {currentSong?.id === song.id && isPlaying ? <ListMusic size={20} className="animate-pulse" /> : <Music size={20} />}
+
+          {libraryTab === 'all' ? (
+            <>
+              <div className="mb-8">
+                <h2 className={`font-bold mb-4 ml-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Albums</h2>
+                <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+                  <div className="flex-shrink-0 w-36 h-40 bg-blue-400 rounded-2xl p-4 flex flex-col justify-end shadow-lg shadow-blue-200 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-white/20 rounded-full -mr-10 -mt-10 blur-xl"></div>
+                    <ListMusic className="text-white mb-auto opacity-80" size={24} />
+                    <p className="text-white font-bold text-lg leading-tight">Intergalaxy</p>
+                    <p className="text-blue-100 text-xs mt-1">8 Songs</p>
                   </div>
-                  <div className="ml-4 flex-1">
-                    <h3 className={`font-bold text-base ${currentSong?.id === song.id ? 'text-blue-500' : (darkMode ? 'text-gray-100' : 'text-gray-800')}`}>{song.title}</h3>
-                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{song.album}</p>
+                  <div onClick={() => setShowMyUploads(true)} className="flex-shrink-0 w-36 h-40 bg-purple-500 rounded-2xl p-4 flex flex-col justify-end shadow-lg shadow-purple-200 relative overflow-hidden cursor-pointer active:scale-95 transition-transform">
+                      <div className="absolute top-0 right-0 w-20 h-20 bg-white/20 rounded-full -mr-10 -mt-10 blur-xl"></div>
+                      <Folder className="text-white mb-auto opacity-80" size={24} />
+                      <p className="text-white font-bold text-lg leading-tight">My Files</p>
+                      <p className="text-purple-200 text-xs mt-1">{uploadedSongs.length} Songs</p>
                   </div>
-                  {currentSong?.id === song.id ? (
-                     <div className="flex space-x-1 items-end h-4 mr-2">
-                        <div className="w-1 bg-blue-500 animate-[bounce_1s_infinite] h-2"></div>
-                        <div className="w-1 bg-blue-500 animate-[bounce_1.2s_infinite] h-4"></div>
-                        <div className="w-1 bg-blue-500 animate-[bounce_0.8s_infinite] h-3"></div>
-                     </div>
-                  ) : (
-                    <span className="text-gray-400 text-xs font-medium">{formatTime(song.duration || 0)}</span>
-                  )}
+                  <div onClick={() => fileInputRef.current?.click()} className={`flex-shrink-0 w-36 h-40 border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-gray-100 border-gray-300'}`}>
+                      <Plus className={darkMode ? 'text-slate-500' : 'text-gray-400 mb-2'} size={32} />
+                      <p className={`font-medium text-sm ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>Upload</p>
+                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="audio/*" className="hidden" />
+                  </div>
                 </div>
-              ))}
+              </div>
+              <div>
+                <h2 className={`font-bold mb-4 ml-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Songs</h2>
+                <div className="space-y-4">
+                  {displayPlaylist.map((song) => (
+                    <div key={song.id} onClick={() => playSong(song)} className={`flex items-center p-3 rounded-2xl transition-all duration-300 ${currentSong?.id === song.id ? (darkMode ? 'bg-blue-900/40 shadow-lg shadow-blue-900/20' : 'bg-blue-50 shadow-md shadow-blue-100/50') : (darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}>
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md ${song.color || 'bg-gray-400'}`}>
+                        {currentSong?.id === song.id && isPlaying ? <ListMusic size={20} className="animate-pulse" /> : <Music size={20} />}
+                      </div>
+                      <div className="ml-4 flex-1">
+                        <h3 className={`font-bold text-base ${currentSong?.id === song.id ? 'text-blue-500' : (darkMode ? 'text-gray-100' : 'text-gray-800')}`}>{song.title}</h3>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{song.album}</p>
+                      </div>
+                      {currentSong?.id === song.id ? (
+                        <div className="flex space-x-1 items-end h-4 mr-2">
+                            <div className="w-1 bg-blue-500 animate-[bounce_1s_infinite] h-2"></div>
+                            <div className="w-1 bg-blue-500 animate-[bounce_1.2s_infinite] h-4"></div>
+                            <div className="w-1 bg-blue-500 animate-[bounce_0.8s_infinite] h-3"></div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs font-medium">{formatTime(song.duration || 0)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            // YOUTUBE TAB
+            <div className="h-full flex flex-col">
+              {!youtubeConnected ? (
+                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                    <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+                        <Youtube size={40} className="text-red-600" />
+                    </div>
+                    <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Connect YouTube Music</h2>
+                    <p className={`mb-8 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                       Login to stream your liked songs and playlists directly in Space Player.
+                    </p>
+                    <button 
+                      onClick={connectYouTube}
+                      disabled={isConnectingYT}
+                      className="w-full max-w-xs py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-500/30"
+                    >
+                        {isConnectingYT ? (
+                           <>Processing...</>
+                        ) : (
+                           <><LogIn size={20} /> Login with Google</>
+                        )}
+                    </button>
+                 </div>
+              ) : (
+                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-4">
+                       <h2 className={`font-bold ml-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Liked Songs</h2>
+                       <span className="text-xs font-medium text-red-500 bg-red-100 px-2 py-1 rounded-full">Connected</span>
+                    </div>
+                    <div className="space-y-4">
+                      {displayPlaylist.map((song) => (
+                        <div key={song.id} onClick={() => playSong(song)} className={`flex items-center p-3 rounded-2xl transition-all duration-300 ${currentSong?.id === song.id ? (darkMode ? 'bg-red-900/20 shadow-lg shadow-red-900/10' : 'bg-red-50 shadow-md shadow-red-100/50') : (darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}>
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md relative overflow-hidden ${song.color || 'bg-gray-400'}`}>
+                             <img src={song.cover} className="w-full h-full object-cover opacity-80" />
+                             <div className="absolute inset-0 flex items-center justify-center">
+                                {currentSong?.id === song.id && isPlaying ? <ListMusic size={20} className="animate-pulse" /> : <Youtube size={20} />}
+                             </div>
+                          </div>
+                          <div className="ml-4 flex-1">
+                            <h3 className={`font-bold text-base ${currentSong?.id === song.id ? 'text-red-500' : (darkMode ? 'text-gray-100' : 'text-gray-800')}`}>{song.title}</h3>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{song.artist} • {song.album}</p>
+                          </div>
+                          {/* Heart icon in list view as well */}
+                          <button onClick={(e) => toggleLike(e, song.id)} className={`p-2 transition-transform active:scale-90 ${likedIds.has(song.id) ? 'text-pink-500' : 'text-gray-400'}`}>
+                             <Heart size={18} fill={likedIds.has(song.id) ? "currentColor" : "none"} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                 </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -611,6 +941,16 @@ const App = () => {
       {/* --- Player View (EXACT REPLICA OF SPACE VECTOR ART) --- */}
       <div className={`absolute inset-0 z-50 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] bg-[#1e1b4b] overflow-hidden flex flex-col items-center ${view === 'player' ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-100 pointer-events-none'}`}>
           
+          {/* NEW: BLURRED BACKGROUND IMAGE */}
+          <div className="absolute inset-0 z-0">
+              <img 
+                  src={currentSong?.cover} 
+                  alt="Blur Background" 
+                  className="w-full h-full object-cover blur-[80px] opacity-60 scale-125"
+              />
+              <div className="absolute inset-0 bg-[#1e1b4b]/60 mix-blend-multiply"></div>
+          </div>
+
           {/* VIGNETTE OVERLAY */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.4)_100%)] pointer-events-none z-0"></div>
 
@@ -632,9 +972,9 @@ const App = () => {
 
           {/* 2. Space Vector Background Elements (Absolute) */}
           {/* Orange Planet Top-Left */}
-          <div className="absolute -top-16 -left-16 w-64 h-64 bg-gradient-to-br from-[#FF9F43] to-[#FF8000] rounded-full opacity-90 blur-2xl pointer-events-none"></div>
+          <div className="absolute -top-16 -left-16 w-64 h-64 bg-gradient-to-br from-[#FF9F43] to-[#FF8000] rounded-full opacity-90 blur-2xl pointer-events-none mix-blend-screen"></div>
           {/* Pink Ring Top-Right */}
-          <div className="absolute -top-12 -right-24 w-80 h-80 rounded-full border-[60px] border-[#FF6B81] opacity-90 blur-xl pointer-events-none"></div>
+          <div className="absolute -top-12 -right-24 w-80 h-80 rounded-full border-[60px] border-[#FF6B81] opacity-90 blur-xl pointer-events-none mix-blend-screen"></div>
           {/* Faint Orbit Lines */}
           <div className="absolute top-1/4 left-[-10%] w-[120%] h-64 border border-white/5 rounded-[100%] rotate-12 scale-110 pointer-events-none"></div>
 
@@ -673,43 +1013,61 @@ const App = () => {
                </div>
           </div>
 
-          {/* 4. UNIFIED GLASS DASHBOARD (Ruler + Controls) */}
-          <div className="w-full z-30 bg-gradient-to-b from-[#304a75]/40 to-[#1e1b4b]/95 backdrop-blur-xl border-t border-white/10 pb-safe pt-4 flex flex-col relative overflow-hidden shadow-[0_-15px_60px_rgba(0,0,0,0.5)]">
+          {/* 4. UNIFIED GLASS DASHBOARD (Ruler + Controls) - FLAT & RECTANGULAR, LIGHTER GLASS */}
+          <div className="w-full z-30 bg-[#3b82f6]/20 backdrop-blur-3xl border-t border-white/10 pb-safe pt-6 flex flex-col relative overflow-hidden">
                
                {/* Ruler Section Container */}
-               <div className="w-full h-24 relative flex flex-col items-center justify-center mb-4">
-                   {/* Mask Fade Sides */}
-                   <div className="w-full h-full relative mask-fade-sides overflow-hidden">
-                       {/* Center Indicator */}
-                       <div className="absolute z-20 flex flex-col items-center top-0 left-1/2 -translate-x-1/2 pointer-events-none">
-                          <div className="text-white text-2xl font-bold font-mono tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] mb-2">{formatTime(currentTime)}</div>
-                          {/* Triangle pointing DOWN - Added shadow */}
-                          <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]"></div>
-                       </div>
-
-                       {/* Moving Ticks */}
-                       <div 
-                          className="flex items-center absolute top-[50px] left-1/2 will-change-transform"
-                          style={{ transform: `translateX(-${currentTime * PIXELS_PER_SECOND}px)` }}
-                       >
-                          {/* Generate ticks for duration (plus buffer) */}
-                          {Array.from({length: Math.ceil((duration || 300) + 20)}).map((_, i) => {
-                             const isMajor = i % 10 === 0;
-                             return (
-                                <div key={i} className="absolute flex flex-col items-center" style={{ left: `${i * TICK_SPACING}px`, width: '1px' }}>
-                                   {/* Tick Mark */}
-                                   <div className={`w-[1px] bg-white/50 ${isMajor ? 'h-5 bg-white shadow-[0_0_5px_rgba(255,255,255,0.5)]' : 'h-3'}`}></div>
-                                   {/* Time Label - Minor labels below */}
-                                   {isMajor && (
-                                      <div className="absolute top-6 text-[10px] text-white/40 w-10 text-center font-mono">
-                                         {i % 60 === 0 ? formatTime(i) : i}
-                                      </div>
-                                   )}
-                                </div>
-                             )
-                          })}
-                       </div>
+               <div className="w-full h-24 relative flex flex-col items-center justify-center mb-6">
+                   
+                   {/* SCROLLING CONTAINER (Ticks + Numbers) */}
+                   <div 
+                      ref={ticksRef}
+                      className="absolute top-0 left-1/2 h-full flex items-start will-change-transform"
+                   >
+                      {Array.from({length: Math.ceil(duration || 300) + 20}).map((_, i) => {
+                         const isTen = i % 10 === 0;
+                         const isFive = i % 5 === 0 && !isTen;
+                         
+                         return (
+                            <div key={i} className="absolute flex flex-col items-center top-0" style={{ left: `${i * TICK_SPACING}px`, width: '1px' }}>
+                               {/* Tick */}
+                               <div className={`w-[1px] bg-white/40 ${isTen ? 'h-6 bg-white/90' : (isFive ? 'h-4 bg-white/70 mt-1' : 'h-2 mt-2')}`}></div>
+                               
+                               {/* Number (Every 10s and 5s) */}
+                               {isTen && (
+                                   <div className={`mt-5 text-sm font-medium font-mono transition-all duration-300 ${Math.abs(currentTime - i) < 5 ? 'text-white scale-110 drop-shadow-md' : 'text-white/30 scale-90'}`}>
+                                       {formatRulerTime(i)}
+                                   </div>
+                               )}
+                               {isFive && (
+                                   <div className={`mt-6 text-[10px] font-medium font-mono text-white/20 transition-all duration-300 ${Math.abs(currentTime - i) < 5 ? 'opacity-80' : 'opacity-40'}`}>
+                                       {formatRulerTime(i)}
+                                   </div>
+                               )}
+                            </div>
+                         )
+                      })}
                    </div>
+
+                   {/* STATIC CENTER INDICATOR (Line + Pill) */}
+                   <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-20">
+                      {/* Top Line Part */}
+                      <div className="w-[1px] h-4 bg-white/50"></div>
+                      {/* The Pill */}
+                      <div className="w-1.5 h-4 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.3)] my-[-2px] z-10"></div>
+                      {/* Bottom Line Part (extending slightly) */}
+                      <div className="w-[1px] h-8 bg-gradient-to-b from-white/50 to-transparent"></div>
+                   </div>
+
+                   {/* STATIC BOTTOM TRIANGLE POINTER */}
+                   <div className="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-none">
+                        <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-white"></div>
+                        {/* Little line under triangle */}
+                        <div className="w-6 h-[1px] bg-white/30 absolute -bottom-1 left-1/2 -translate-x-1/2"></div>
+                   </div>
+
+                   {/* FADE MASKS (Sides) - Adjusted for Lighter Blue */}
+                   <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-[#1e3a8a]/40 via-transparent to-[#1e3a8a]/40"></div>
 
                    {/* Slider Input (Invisible overlay for touch) */}
                    <input
@@ -723,7 +1081,7 @@ const App = () => {
                </div>
 
                {/* Bottom Controls Container */}
-               <div className="w-full px-8 pb-10 flex items-center justify-between">
+               <div className="w-full px-8 pb-10 flex items-center justify-between z-40">
                   <button className="text-white/40 hover:text-white transition-colors">
                       <Repeat size={20} />
                   </button>
@@ -734,12 +1092,12 @@ const App = () => {
 
                   <button 
                       onClick={() => setIsPlaying(!isPlaying)}
-                      className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-[0_0_25px_rgba(255,255,255,0.4)] hover:scale-110 active:scale-95 transition-transform duration-300"
+                      className="w-20 h-20 bg-white/5 backdrop-blur-md border border-white/20 rounded-full flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all duration-200"
                   >
                        {isPlaying ? (
-                          <Pause size={32} className="text-[#2D98DA] fill-current drop-shadow-md" />
+                          <Pause size={32} className="text-white fill-white" />
                        ) : (
-                          <Play size={32} className="text-[#2D98DA] fill-current ml-1 drop-shadow-md" />
+                          <Play size={32} className="text-white fill-white ml-1" />
                        )}
                   </button>
 
@@ -747,17 +1105,16 @@ const App = () => {
                       <SkipForward size={28} />
                   </button>
 
-                  <button className="text-white/40 hover:text-pink-500 transition-colors">
-                      <Heart size={20} />
+                  <button 
+                      onClick={(e) => currentSong && toggleLike(e, currentSong.id)}
+                      className={`transition-colors active:scale-90 hover:scale-110 ${currentSong && likedIds.has(currentSong.id) ? 'text-pink-500' : 'text-white/40 hover:text-white'}`}
+                  >
+                      <Heart size={20} fill={currentSong && likedIds.has(currentSong.id) ? "currentColor" : "none"} />
                   </button>
               </div>
           </div>
           
           <style>{`
-              .mask-fade-sides {
-                  mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
-                  -webkit-mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
-              }
               .mt-safe {
                   margin-top: env(safe-area-inset-top);
               }
