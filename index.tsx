@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { 
   Play, Pause, SkipBack, SkipForward, Heart, Repeat, 
   ChevronLeft, MoreHorizontal, ListMusic, Plus,
-  Disc, Mic2, Music, Download, X, Share, Menu
+  Disc, Mic2, Music, Download, X, Share, Menu,
+  Moon, Activity, Folder
 } from 'lucide-react';
 
 // --- Types ---
@@ -128,6 +129,13 @@ const App = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
+  // Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [visualizerEnabled, setVisualizerEnabled] = useState(true);
+  const [eqPreset, setEqPreset] = useState('Flat');
+  const [showMyUploads, setShowMyUploads] = useState(false);
+
   // Install State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -136,6 +144,9 @@ const App = () => {
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter for uploaded songs
+  const uploadedSongs = playlist.filter(s => s.artist === 'Local Upload');
 
   // Load saved songs on boot
   useEffect(() => {
@@ -254,6 +265,8 @@ const App = () => {
       
       // Save to state
       setPlaylist(prev => [...prev, newSong]);
+      // Play immediately? User choice. Let's not auto-play, just add to library. 
+      // But previous logic was auto-play. Let's keep consistency.
       playSong(newSong);
 
       // Persist to DB
@@ -262,14 +275,150 @@ const App = () => {
   };
 
   return (
-    <div className="relative w-full h-full bg-white overflow-hidden font-sans">
+    <div className={`relative w-full h-full overflow-hidden font-sans transition-colors duration-500 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
       <audio
         ref={audioRef}
         src={currentSong?.src}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleSongEnd}
         onLoadedMetadata={handleTimeUpdate}
+        crossOrigin="anonymous"
       />
+
+      {/* --- Settings Modal --- */}
+      {showSettings && (
+        <div className="absolute inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl ${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800'} transition-colors`}>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Settings</h2>
+              <button onClick={() => setShowSettings(false)} className={`p-2 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
+                <X size={20}/>
+              </button>
+            </div>
+            
+            {/* Dark Mode Toggle */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${darkMode ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      <Moon size={20} />
+                  </div>
+                  <span className="font-medium">Dark Mode</span>
+              </div>
+              <button 
+                onClick={() => setDarkMode(!darkMode)}
+                className={`w-12 h-7 rounded-full transition-colors relative ${darkMode ? 'bg-indigo-500' : 'bg-gray-300'}`}
+              >
+                  <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            </div>
+
+            {/* Visualizer Toggle */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${visualizerEnabled ? 'bg-pink-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      <Activity size={20} />
+                  </div>
+                  <span className="font-medium">Visualizer</span>
+              </div>
+              <button 
+                onClick={() => setVisualizerEnabled(!visualizerEnabled)}
+                className={`w-12 h-7 rounded-full transition-colors relative ${visualizerEnabled ? 'bg-pink-500' : 'bg-gray-300'}`}
+              >
+                  <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${visualizerEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            </div>
+
+            {/* EQ Presets */}
+            <div className="mb-2">
+              <span className="font-medium block mb-3">Equalizer Preset</span>
+              <div className="grid grid-cols-2 gap-3">
+                  {['Flat', 'Bass Boost', 'Vocal', 'Treble'].map(preset => (
+                      <button
+                        key={preset}
+                        onClick={() => setEqPreset(preset)}
+                        className={`py-2 px-4 rounded-xl text-sm font-medium transition-all ${
+                          eqPreset === preset 
+                            ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' 
+                            : (darkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-100 hover:bg-gray-200')
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- My Uploads Modal --- */}
+      {showMyUploads && (
+        <div className="absolute inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-xl p-4 animate-in fade-in zoom-in-95 duration-300">
+           <div className={`w-full h-full max-w-md rounded-[2rem] p-6 shadow-2xl overflow-hidden flex flex-col relative transition-colors ${darkMode ? 'bg-slate-800/95 text-white' : 'bg-white/95 text-gray-800'}`}>
+             {/* Header */}
+             <div className="flex items-center justify-between mb-6">
+                <div>
+                   <h2 className="text-2xl font-bold">My Uploads</h2>
+                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{uploadedSongs.length} local tracks</p>
+                </div>
+                <button 
+                  onClick={() => setShowMyUploads(false)}
+                  className={`p-2 rounded-full ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-100 hover:bg-gray-200'}`}
+                >
+                  <X size={20} />
+                </button>
+             </div>
+
+             {/* List */}
+             <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">
+               {uploadedSongs.length === 0 ? (
+                 <div className="h-full flex flex-col items-center justify-center opacity-40">
+                    <Folder size={64} className="mb-4" />
+                    <p className="font-medium">No music uploaded yet</p>
+                    <p className="text-sm">Tap the + button to add songs</p>
+                 </div>
+               ) : (
+                 uploadedSongs.map(song => (
+                    <div 
+                      key={song.id}
+                      onClick={() => playSong(song)}
+                      className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${
+                        currentSong?.id === song.id 
+                           ? (darkMode ? 'bg-purple-500/20' : 'bg-purple-50') 
+                           : (darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')
+                      }`}
+                    >
+                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white ${song.color || 'bg-purple-500'}`}>
+                          {currentSong?.id === song.id && isPlaying ? <Activity size={18} className="animate-pulse"/> : <Music size={18} />}
+                       </div>
+                       <div className="ml-3 flex-1 overflow-hidden">
+                          <h4 className={`font-bold truncate ${currentSong?.id === song.id ? 'text-purple-500' : ''}`}>{song.title}</h4>
+                          <p className="text-xs opacity-60 truncate">{song.album}</p>
+                       </div>
+                       {currentSong?.id === song.id && (
+                          <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                       )}
+                    </div>
+                 ))
+               )}
+             </div>
+
+             {/* Bottom Action Hint */}
+             {uploadedSongs.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200/10 text-center">
+                   <button 
+                     onClick={() => {
+                        if(uploadedSongs.length > 0) playSong(uploadedSongs[0]);
+                     }}
+                     className="w-full py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                   >
+                      <Play size={18} fill="white" /> Play All
+                   </button>
+                </div>
+             )}
+           </div>
+        </div>
+      )}
 
       {/* --- Install Help Modal --- */}
       {showInstallHelp && (
@@ -330,7 +479,7 @@ const App = () => {
 
       {/* --- List View (Artist Profile) --- */}
       <div 
-        className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] bg-gray-50 will-change-transform ${view === 'player' ? 'scale-90 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}
+        className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${darkMode ? 'bg-slate-900' : 'bg-gray-50'} will-change-transform ${view === 'player' ? 'scale-90 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}
       >
         {/* Header Image */}
         <div className="relative h-[45%] w-full overflow-hidden">
@@ -357,7 +506,10 @@ const App = () => {
             )}
             
             {/* Menu Button */}
-            <button className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white">
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white"
+            >
               <MoreHorizontal size={24} />
             </button>
           </div>
@@ -378,11 +530,11 @@ const App = () => {
         </button>
 
         {/* Content Body */}
-        <div className="relative -mt-8 bg-white rounded-t-[3rem] h-[60%] px-6 pt-10 pb-20 overflow-y-auto no-scrollbar z-10">
+        <div className={`relative -mt-8 rounded-t-[3rem] h-[60%] px-6 pt-10 pb-20 overflow-y-auto no-scrollbar z-10 transition-colors ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
           
           {/* Albums Section */}
           <div className="mb-8">
-            <h2 className="text-gray-800 font-bold mb-4 ml-1">Albums</h2>
+            <h2 className={`font-bold mb-4 ml-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Albums</h2>
             <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
               {/* Album Card 1 */}
               <div className="flex-shrink-0 w-36 h-40 bg-blue-400 rounded-2xl p-4 flex flex-col justify-end shadow-lg shadow-blue-200 relative overflow-hidden group">
@@ -400,13 +552,24 @@ const App = () => {
                 <p className="text-orange-100 text-xs mt-1">10 Songs</p>
               </div>
 
+               {/* My Uploads Album Card */}
+               <div 
+                  onClick={() => setShowMyUploads(true)}
+                  className="flex-shrink-0 w-36 h-40 bg-purple-500 rounded-2xl p-4 flex flex-col justify-end shadow-lg shadow-purple-200 relative overflow-hidden cursor-pointer active:scale-95 transition-transform"
+                >
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/20 rounded-full -mr-10 -mt-10 blur-xl"></div>
+                  <Folder className="text-white mb-auto opacity-80" size={24} />
+                  <p className="text-white font-bold text-lg leading-tight">My Files</p>
+                  <p className="text-purple-200 text-xs mt-1">{uploadedSongs.length} Songs</p>
+               </div>
+
                {/* Upload Card */}
                <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex-shrink-0 w-36 h-40 bg-gray-100 border-2 border-dashed border-gray-300 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform"
+                  className={`flex-shrink-0 w-36 h-40 border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-gray-100 border-gray-300'}`}
                 >
-                  <Plus className="text-gray-400 mb-2" size={32} />
-                  <p className="text-gray-500 font-medium text-sm">Upload</p>
+                  <Plus className={darkMode ? 'text-slate-500' : 'text-gray-400 mb-2'} size={32} />
+                  <p className={`font-medium text-sm ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>Upload</p>
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="audio/*" className="hidden" />
                </div>
             </div>
@@ -414,13 +577,17 @@ const App = () => {
 
           {/* Songs List */}
           <div>
-            <h2 className="text-gray-800 font-bold mb-4 ml-1">Songs</h2>
+            <h2 className={`font-bold mb-4 ml-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Songs</h2>
             <div className="space-y-4">
               {playlist.map((song) => (
                 <div 
                   key={song.id} 
                   onClick={() => playSong(song)}
-                  className={`flex items-center p-3 rounded-2xl transition-colors ${currentSong?.id === song.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                  className={`flex items-center p-3 rounded-2xl transition-colors ${
+                    currentSong?.id === song.id 
+                      ? (darkMode ? 'bg-blue-900/30' : 'bg-blue-50') 
+                      : (darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')
+                  }`}
                 >
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md ${song.color || 'bg-gray-400'}`}>
                     {currentSong?.id === song.id && isPlaying ? (
@@ -430,8 +597,12 @@ const App = () => {
                     )}
                   </div>
                   <div className="ml-4 flex-1">
-                    <h3 className={`font-bold text-base ${currentSong?.id === song.id ? 'text-blue-600' : 'text-gray-800'}`}>{song.title}</h3>
-                    <p className="text-gray-400 text-xs">{song.album}</p>
+                    <h3 className={`font-bold text-base ${
+                      currentSong?.id === song.id 
+                        ? 'text-blue-500' 
+                        : (darkMode ? 'text-gray-100' : 'text-gray-800')
+                    }`}>{song.title}</h3>
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{song.album}</p>
                   </div>
                   {currentSong?.id === song.id ? (
                      <div className="flex space-x-1 items-end h-4 mr-2">
@@ -484,7 +655,10 @@ const App = () => {
             <span className="sr-only">Close</span>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
           </button>
-          <button className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white/70 hover:text-white">
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white/70 hover:text-white"
+          >
             <span className="sr-only">Menu</span>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
@@ -523,9 +697,35 @@ const App = () => {
               {/* Visual Ruler */}
               <div className="absolute inset-0 flex items-end justify-between px-2 pointer-events-none overflow-hidden">
                  {Array.from({ length: 40 }).map((_, i) => {
-                    // Create a wave pattern for the ruler
-                    const height = 10 + Math.random() * 20; 
+                    // Visualizer Logic
+                    let barHeight = 0;
+                    if (visualizerEnabled && isPlaying) {
+                       const baseNoise = Math.random() * 20;
+                       // Modify visualizer based on preset
+                       if (eqPreset === 'Bass Boost') {
+                          // Boost lower freq (left side)
+                          if (i < 15) barHeight = 15 + Math.random() * 30;
+                          else barHeight = 10 + baseNoise;
+                       } else if (eqPreset === 'Treble') {
+                          // Boost high freq (right side)
+                          if (i > 25) barHeight = 15 + Math.random() * 30;
+                          else barHeight = 10 + baseNoise;
+                       } else if (eqPreset === 'Vocal') {
+                          // Boost mid freq
+                          if (i > 10 && i < 30) barHeight = 15 + Math.random() * 30;
+                          else barHeight = 10 + baseNoise;
+                       } else {
+                          // Flat
+                          barHeight = 10 + baseNoise;
+                       }
+                    } else {
+                       // Idle state or Disabled
+                       barHeight = visualizerEnabled ? 8 + Math.random() * 4 : 8;
+                    }
+                    
+                    const height = barHeight;
                     const isProgress = (i / 40) * duration < currentTime;
+                    
                     return (
                        <div 
                           key={i} 
