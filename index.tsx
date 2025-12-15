@@ -530,7 +530,7 @@ const App = () => {
         </button>
 
         {/* Content Body */}
-        <div className={`relative -mt-8 rounded-t-[3rem] h-[60%] px-6 pt-10 pb-20 overflow-y-auto no-scrollbar z-10 transition-colors ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+        <div className={`relative -mt-8 rounded-t-[3rem] h-[60%] px-6 pt-10 pb-32 overflow-y-auto no-scrollbar z-10 transition-colors ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
           
           {/* Albums Section */}
           <div className="mb-8">
@@ -619,6 +619,60 @@ const App = () => {
           </div>
         </div>
       </div>
+
+      {/* --- Mini Player --- */}
+      {currentSong && (
+         <div 
+            onClick={() => setView('player')}
+            className={`absolute bottom-4 left-4 right-4 z-40 bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl p-2 flex items-center cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform 
+              ${view === 'list' ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0 pointer-events-none'}
+              ${darkMode ? 'bg-slate-800/80 border-slate-700/50' : 'bg-white/80 border-white/40'}
+            `}
+         >
+            {/* Spinning Art */}
+            <div className={`w-12 h-12 rounded-full flex-shrink-0 overflow-hidden border-2 ${darkMode ? 'border-slate-600' : 'border-white'} relative`}>
+               <img 
+                 src={currentSong.cover} 
+                 alt={currentSong.title}
+                 className={`w-full h-full object-cover ${isPlaying ? 'animate-spin-slow' : ''}`}
+               />
+               {/* Center hole for vinyl look */}
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-black rounded-full border border-white/20"></div>
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 ml-3 min-w-0 flex flex-col justify-center">
+               <h4 className={`font-bold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{currentSong.title}</h4>
+               <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{currentSong.artist}</p>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center gap-2 mr-2">
+               {/* Heart (Optional, just visual) */}
+               {/* <button className="p-2 text-gray-400 hover:text-red-500"><Heart size={18} /></button> */}
+               
+               <button 
+                  onClick={(e) => {
+                     e.stopPropagation();
+                     setIsPlaying(!isPlaying);
+                  }}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform active:scale-90 ${darkMode ? 'bg-white text-slate-900' : 'bg-black text-white'}`}
+               >
+                  {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+               </button>
+            </div>
+            
+            {/* Progress Bar (Bottom Line) */}
+            <div 
+               className="absolute bottom-0 left-4 right-4 h-[2px] bg-gray-200/20 rounded-full overflow-hidden"
+            >
+               <div 
+                  className={`h-full ${darkMode ? 'bg-indigo-400' : 'bg-blue-500'}`}
+                  style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+               ></div>
+            </div>
+         </div>
+      )}
 
       {/* --- Player View (Now Playing) --- */}
       <div 
