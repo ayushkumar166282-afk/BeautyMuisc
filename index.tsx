@@ -202,6 +202,80 @@ const App = () => {
     }
   }, [isPlaying, currentSong]);
 
+  // --- MEDIA SESSION API INTEGRATION ---
+  useEffect(() => {
+    if (!currentSong || !('mediaSession' in navigator)) return;
+
+    // 1. Set Metadata
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentSong.title,
+      artist: currentSong.artist,
+      album: currentSong.album,
+      artwork: [
+        { src: currentSong.cover, sizes: '96x96', type: 'image/jpeg' },
+        { src: currentSong.cover, sizes: '128x128', type: 'image/jpeg' },
+        { src: currentSong.cover, sizes: '192x192', type: 'image/jpeg' },
+        { src: currentSong.cover, sizes: '256x256', type: 'image/jpeg' },
+        { src: currentSong.cover, sizes: '384x384', type: 'image/jpeg' },
+        { src: currentSong.cover, sizes: '512x512', type: 'image/jpeg' },
+      ]
+    });
+
+    // 2. Set Action Handlers
+    // Note: We redefine these when playlist/currentSong changes to ensure correct closures for next/prev
+    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
+    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
+    
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+        // Prev Song Logic
+        const idx = playlist.findIndex(s => s.id === currentSong.id);
+        const prevIdx = (idx - 1 + playlist.length) % playlist.length;
+        setCurrentSong(playlist[prevIdx]);
+        setIsPlaying(true);
+    });
+
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+        // Next Song Logic
+        const idx = playlist.findIndex(s => s.id === currentSong.id);
+        const nextIdx = (idx + 1) % playlist.length;
+        setCurrentSong(playlist[nextIdx]);
+        setIsPlaying(true);
+    });
+
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && audioRef.current) {
+            audioRef.current.currentTime = details.seekTime;
+            setCurrentTime(details.seekTime);
+            // Update position state immediately
+            updatePositionState();
+        }
+    });
+
+  }, [currentSong, playlist]);
+
+  // Update Playback State
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+      // Sync position state when playback changes
+      updatePositionState();
+    }
+  }, [isPlaying]);
+
+  const updatePositionState = () => {
+    if ('mediaSession' in navigator && audioRef.current && !isNaN(audioRef.current.duration)) {
+        try {
+            navigator.mediaSession.setPositionState({
+                duration: audioRef.current.duration,
+                playbackRate: audioRef.current.playbackRate,
+                position: audioRef.current.currentTime
+            });
+        } catch (e) {
+            // Ignore errors (e.g. invalid duration)
+        }
+    }
+  };
+
   const handleTimeUpdate = () => {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
@@ -245,6 +319,7 @@ const App = () => {
     if (audioRef.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
+      updatePositionState();
     }
   };
 
@@ -281,7 +356,10 @@ const App = () => {
         src={currentSong?.src}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleSongEnd}
-        onLoadedMetadata={handleTimeUpdate}
+        onLoadedMetadata={() => {
+            handleTimeUpdate();
+            updatePositionState();
+        }}
         crossOrigin="anonymous"
       />
 
