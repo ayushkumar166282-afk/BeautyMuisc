@@ -1,0 +1,22 @@
+{
+  "name": "Space Player",
+  "short_name": "SpaceMusic",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1e1b4b",
+  "theme_color": "#1e1b4b",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3049/3049448.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3049/3049448.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
