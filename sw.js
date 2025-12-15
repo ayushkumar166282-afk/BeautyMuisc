@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'music-app-offline-v5';
+const CACHE_NAME = 'music-app-offline-v6';
 
 // 1. Install Phase: Cache the critical app shell immediately
 self.addEventListener('install', (event) => {

@@ -16,7 +16,65 @@ interface Song {
   cover: string;
   src: string;
   color?: string;
+  // For DB storage
+  fileBlob?: Blob; 
 }
+
+// --- IndexedDB Helper ---
+const DB_NAME = 'SpaceMusicDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'songs';
+
+const initDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+  });
+};
+
+const saveSongToDB = async (song: Song, blob: Blob) => {
+  try {
+    const db = await initDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    // Create a storage object that removes the temporary blob URL and stores the actual blob
+    const songToStore = { ...song, src: '', fileBlob: blob }; 
+    store.put(songToStore);
+    return tx.oncomplete;
+  } catch (err) {
+    console.error('Failed to save song', err);
+  }
+};
+
+const loadSongsFromDB = async (): Promise<Song[]> => {
+  try {
+    const db = await initDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const storedSongs = request.result;
+        // Convert stored Blobs back to URLs
+        const songs = storedSongs.map((s: any) => ({
+          ...s,
+          src: URL.createObjectURL(s.fileBlob)
+        }));
+        resolve(songs);
+      };
+    });
+  } catch (err) {
+    console.error('Failed to load songs', err);
+    return [];
+  }
+};
 
 // --- Mock Data (Server-sided music) ---
 const SERVER_SONGS: Song[] = [
@@ -78,6 +136,15 @@ const App = () => {
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load saved songs on boot
+  useEffect(() => {
+    loadSongsFromDB().then(savedSongs => {
+      if (savedSongs.length > 0) {
+        setPlaylist([...SERVER_SONGS, ...savedSongs]);
+      }
+    });
+  }, []);
 
   // Install & Platform Detection Logic
   useEffect(() => {
@@ -184,8 +251,13 @@ const App = () => {
         src: url,
         color: 'bg-purple-500'
       };
-      setPlaylist([newSong, ...playlist]);
+      
+      // Save to state
+      setPlaylist(prev => [...prev, newSong]);
       playSong(newSong);
+
+      // Persist to DB
+      saveSongToDB(newSong, file);
     }
   };
 
@@ -258,12 +330,12 @@ const App = () => {
 
       {/* --- List View (Artist Profile) --- */}
       <div 
-        className={`absolute inset-0 transition-transform duration-500 ease-in-out bg-gray-50 ${view === 'player' ? 'scale-90 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}
+        className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] bg-gray-50 will-change-transform ${view === 'player' ? 'scale-90 opacity-0 pointer-events-none' : 'scale-100 opacity-100'}`}
       >
         {/* Header Image */}
         <div className="relative h-[45%] w-full overflow-hidden">
           <img 
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1000&auto=format&fit=crop" 
+            src="https://images.unsplash.com/photo-1568481947814-22b9f6266023?q=80&w=1000&auto=format&fit=crop" 
             alt="Artist" 
             className="w-full h-full object-cover filter brightness-90"
           />
@@ -379,7 +451,7 @@ const App = () => {
 
       {/* --- Player View (Now Playing) --- */}
       <div 
-        className={`absolute inset-0 z-50 transition-all duration-700 ease-out overflow-hidden flex flex-col
+        className={`absolute inset-0 z-50 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform overflow-hidden flex flex-col
           ${view === 'player' ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-100'}
         `}
         style={{
