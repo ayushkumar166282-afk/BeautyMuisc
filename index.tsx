@@ -270,6 +270,7 @@ const App = () => {
     } else {
         setLyrics(MOCK_LYRICS);
     }
+    setActiveLyricIndex(0); // Reset index on song change
     
     // Update sources
     if (currentSong?.lyricsSources) {
@@ -478,19 +479,22 @@ const App = () => {
       setCurrentTime(cur);
       setDuration(dur);
       
-      // Update Active Lyric
-      // Only auto-scroll if lyrics are synced (have positive timestamps)
+      // Update Active Lyric - ROBUST SYNC LOGIC
+      // Find the last lyric line that has a timestamp less than or equal to current time.
       const hasSynced = lyrics.some(l => l.time >= 0);
       if (hasSynced) {
-          const idx = lyrics.findIndex((line, i) => {
-             const nextLine = lyrics[i + 1];
-             // Filter out unsynced lines for logic safety
-             if (line.time < 0) return false;
-             // If next line is unknown, we just keep this one active until a known one comes
-             return cur >= line.time && (!nextLine || nextLine.time < 0 || cur < nextLine.time);
-          });
-          if (idx !== -1 && idx !== activeLyricIndex) {
-             setActiveLyricIndex(idx);
+          let newActiveIndex = -1;
+          for (let i = 0; i < lyrics.length; i++) {
+              if (lyrics[i].time >= 0 && lyrics[i].time <= cur) {
+                  newActiveIndex = i;
+              } else if (lyrics[i].time > cur) {
+                  // Since lyrics are sorted, we can stop early
+                  break;
+              }
+          }
+          
+          if (newActiveIndex !== -1 && newActiveIndex !== activeLyricIndex) {
+              setActiveLyricIndex(newActiveIndex);
           }
       }
       
@@ -503,12 +507,20 @@ const App = () => {
   // Auto-scroll lyrics
   useEffect(() => {
       if (view === 'lyrics' && lyricsContainerRef.current) {
-          // Only scroll if synced
           const hasSynced = lyrics.some(l => l.time >= 0);
           if (hasSynced) {
-              const activeEl = lyricsContainerRef.current.querySelector('[data-active="true"]') as HTMLElement;
-              if (activeEl) {
-                  activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              // Access the specific active line element safely
+              // Structure: Wrapper (py-[45vh]) -> Line Divs
+              const wrapper = lyricsContainerRef.current.children[0];
+              if (wrapper && wrapper.children[activeLyricIndex]) {
+                  const activeEl = wrapper.children[activeLyricIndex] as HTMLElement;
+                  
+                  // Use gentle scrollIntoView
+                  activeEl.scrollIntoView({ 
+                      behavior: 'smooth', 
+                      block: 'center',
+                      inline: 'center' 
+                  });
               }
           }
       }
@@ -813,6 +825,9 @@ const App = () => {
         if (!Array.isArray(generatedLyrics) || generatedLyrics.length === 0) {
              generatedLyrics = [{ time: 0, text: "Lyrics not found." }];
         }
+        
+        // Sort Lyrics to ensure time sync logic works
+        generatedLyrics.sort((a, b) => a.time - b.time);
         
         const updatedSong = { ...currentSong, lyrics: generatedLyrics, lyricsSources: sources };
         setLyrics(generatedLyrics);
@@ -1156,12 +1171,16 @@ const App = () => {
                                    let styleClass = '';
                                    if (isSynced) {
                                        if (dist === 0) {
-                                           styleClass = 'text-white scale-110 opacity-100 blur-0 font-extrabold text-3xl my-8 origin-left';
+                                           // Active Line: Scale up, full opacity, glow
+                                           styleClass = 'text-white scale-110 opacity-100 blur-0 font-extrabold text-3xl my-8 origin-left drop-shadow-[0_0_15px_rgba(255,255,255,0.6)]';
                                        } else if (dist === 1) {
+                                           // Near Neighbors: Slightly smaller, slightly transparent
                                            styleClass = 'text-white/60 scale-100 opacity-60 blur-[0.5px] font-bold text-2xl my-5 origin-left';
                                        } else if (dist === 2) {
+                                           // Far Neighbors: Fading out
                                            styleClass = 'text-white/30 scale-95 opacity-30 blur-[1px] font-semibold text-xl my-4 origin-left';
                                        } else {
+                                           // Distant: Barely visible
                                            styleClass = 'text-white/10 scale-90 opacity-10 blur-[2px] font-medium text-lg my-3 origin-left';
                                        }
                                    } else {
@@ -1181,7 +1200,7 @@ const App = () => {
                                                }
                                            }}
                                        >
-                                           <p className={`leading-tight drop-shadow-md`}>
+                                           <p className={`leading-tight`}>
                                                {line.text}
                                            </p>
                                        </div>
