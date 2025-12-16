@@ -5,10 +5,17 @@ import {
   ChevronLeft, MoreHorizontal, ListMusic, Plus,
   Disc, Mic2, Music, Download, X, Share, Menu,
   Moon, Activity, Folder, ChevronDown, Youtube, LogIn,
-  BarChart2, PlayCircle, Home, Sparkles, Wand2, Save
+  BarChart2, PlayCircle, Home, Sparkles, Wand2, Save,
+  RefreshCw, FileAudio
 } from 'lucide-react';
+import { GoogleGenAI, Type } from "@google/genai";
 
 // --- Types ---
+interface LyricLine {
+  time: number;
+  text: string;
+}
+
 interface Song {
   id: string;
   title: string;
@@ -20,12 +27,8 @@ interface Song {
   color?: string;
   source?: 'local' | 'server' | 'youtube' | 'ai'; // Track source
   // For DB storage
-  fileBlob?: Blob; 
-}
-
-interface LyricLine {
-  time: number;
-  text: string;
+  fileBlob?: Blob;
+  lyrics?: LyricLine[];
 }
 
 // --- IndexedDB Helper ---
@@ -60,6 +63,19 @@ const saveSongToDB = async (song: Song, blob: Blob) => {
   }
 };
 
+const updateSongInDB = async (song: Song) => {
+    try {
+        if (!song.fileBlob) return;
+        const db = await initDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const songToStore = { ...song, src: '' }; // Keep blob, remove src url
+        store.put(songToStore);
+    } catch(err) {
+        console.error("Failed to update song", err);
+    }
+}
+
 const loadSongsFromDB = async (): Promise<Song[]> => {
   try {
     const db = await initDB();
@@ -72,7 +88,8 @@ const loadSongsFromDB = async (): Promise<Song[]> => {
         const songs = storedSongs.map((s: any) => ({
           ...s,
           src: URL.createObjectURL(s.fileBlob),
-          source: 'local'
+          source: 'local',
+          fileBlob: s.fileBlob // Keep blob for AI usage
         }));
         resolve(songs);
       };
@@ -203,6 +220,21 @@ const formatRulerTime = (time: number) => {
   return formatTime(time);
 };
 
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result.split(',')[1]);
+      } else {
+        reject(new Error('Failed to convert blob to base64'));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
 // --- Components ---
 
 const App = () => {
@@ -245,11 +277,21 @@ const App = () => {
   // Lyrics Logic
   const [lyrics, setLyrics] = useState<LyricLine[]>(MOCK_LYRICS);
   const [activeLyricIndex, setActiveLyricIndex] = useState(0);
+  const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
       localStorage.setItem('space_music_liked_ids', JSON.stringify(Array.from(likedIds)));
   }, [likedIds]);
+
+  // Handle Lyrics Update on Song Change
+  useEffect(() => {
+    if (currentSong?.lyrics) {
+        setLyrics(currentSong.lyrics);
+    } else {
+        setLyrics(MOCK_LYRICS);
+    }
+  }, [currentSong]);
 
   // Quote Rotation
   useEffect(() => {
@@ -559,6 +601,48 @@ const App = () => {
     }
   };
 
+  // --- Gemini Lyrics Generation ---
+  const generateLyricsForSong = async () => {
+    if (!currentSong || currentSong.source !== 'local' || !currentSong.fileBlob) return;
+    
+    setIsGeneratingLyrics(true);
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const base64Data = await blobToBase64(currentSong.fileBlob);
+        
+        const model = ai.models.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const result = await model.generateContent({
+            contents: [
+                {
+                    parts: [
+                        { inlineData: { mimeType: 'audio/mp3', data: base64Data } },
+                        { text: 'Listen to this audio and provide the lyrics with precise timestamps for each line in JSON format. The format should be an array of objects with "time" (number in seconds) and "text" (string) properties. Do not wrap in markdown code blocks.' }
+                    ]
+                }
+            ],
+            config: {
+                responseMimeType: "application/json",
+            }
+        });
+        
+        const text = result.response.text();
+        const generatedLyrics = JSON.parse(text);
+        
+        if (Array.isArray(generatedLyrics)) {
+            const updatedSong = { ...currentSong, lyrics: generatedLyrics };
+            setLyrics(generatedLyrics);
+            setPlaylist(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
+            setCurrentSong(updatedSong);
+            await updateSongInDB(updatedSong);
+        }
+    } catch (e) {
+        console.error("Error generating lyrics:", e);
+        alert("Failed to generate lyrics. Please try again.");
+    } finally {
+        setIsGeneratingLyrics(false);
+    }
+  };
+
   const handleAiGenerate = () => {
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
@@ -714,32 +798,56 @@ const App = () => {
                </div>
 
                {/* Lyrics Container - Flex Grow to Fill available space */}
-               <div className="flex-1 min-h-0 relative z-10 w-full">
-                   <div ref={lyricsContainerRef} className="absolute inset-0 overflow-y-auto no-scrollbar mask-gradient scroll-smooth">
-                       <div className="py-[45vh] px-6 text-center">
-                           {lyrics.map((line, index) => {
-                               const isActive = index === activeLyricIndex;
-                               return (
-                                   <div 
-                                       key={index} 
-                                       data-active={isActive}
-                                       className={`transition-all duration-700 ease-out py-4 cursor-pointer select-none ${isActive ? 'scale-105 opacity-100 blur-0' : 'scale-95 opacity-30 blur-[1px]'}`}
-                                       onClick={() => {
-                                           if (audioRef.current) {
-                                               audioRef.current.currentTime = line.time;
-                                               setCurrentTime(line.time);
-                                               setActiveLyricIndex(index);
-                                           }
-                                       }}
-                                   >
-                                       <p className={`font-bold leading-tight transition-all duration-700 ${isActive ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-2xl text-white'}`}>
-                                           {line.text}
-                                       </p>
-                                   </div>
-                               );
-                           })}
+               <div className="flex-1 min-h-0 relative z-10 w-full flex flex-col items-center justify-center">
+                   {currentSong?.source === 'local' && !currentSong.lyrics && !isGeneratingLyrics && (
+                       <div className="text-center p-6 animate-in fade-in zoom-in-95 duration-500">
+                           <FileAudio size={48} className="text-white/30 mx-auto mb-4" />
+                           <p className="text-white/60 mb-6 font-medium">No synced lyrics found for this file.</p>
+                           <button 
+                                onClick={generateLyricsForSong}
+                                className="px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-full text-white font-bold flex items-center gap-2 mx-auto hover:bg-white/20 transition-all active:scale-95 shadow-lg shadow-purple-500/20"
+                           >
+                                <Sparkles size={18} className="text-purple-300" /> Generate Synced Lyrics
+                           </button>
+                           <p className="text-xs text-white/30 mt-4 max-w-xs mx-auto">Powered by Gemini AI. Extracts text and timings directly from audio.</p>
                        </div>
-                   </div>
+                   )}
+                   
+                   {isGeneratingLyrics && (
+                       <div className="text-center p-6 animate-in fade-in zoom-in-95 duration-500">
+                           <div className="w-12 h-12 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin mx-auto mb-6"></div>
+                           <h3 className="text-white font-bold text-lg mb-2">Listening & Transcribing...</h3>
+                           <p className="text-white/50 text-sm">This may take a moment</p>
+                       </div>
+                   )}
+
+                   {(currentSong?.lyrics || (currentSong?.source !== 'local' && !isGeneratingLyrics)) && (
+                       <div ref={lyricsContainerRef} className="absolute inset-0 overflow-y-auto no-scrollbar mask-gradient scroll-smooth">
+                           <div className="py-[45vh] px-6 text-center">
+                               {lyrics.map((line, index) => {
+                                   const isActive = index === activeLyricIndex;
+                                   return (
+                                       <div 
+                                           key={index} 
+                                           data-active={isActive}
+                                           className={`transition-all duration-700 ease-out py-4 cursor-pointer select-none ${isActive ? 'scale-105 opacity-100 blur-0' : 'scale-95 opacity-30 blur-[1px]'}`}
+                                           onClick={() => {
+                                               if (audioRef.current) {
+                                                   audioRef.current.currentTime = line.time;
+                                                   setCurrentTime(line.time);
+                                                   setActiveLyricIndex(index);
+                                               }
+                                           }}
+                                       >
+                                           <p className={`font-bold leading-tight transition-all duration-700 ${isActive ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-2xl text-white'}`}>
+                                               {line.text}
+                                           </p>
+                                       </div>
+                                   );
+                               })}
+                           </div>
+                       </div>
+                   )}
                </div>
                
                {/* Lyrics Control Bar - Fixed Height */}
