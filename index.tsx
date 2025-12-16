@@ -448,7 +448,7 @@ const App = () => {
   // Auto-scroll lyrics
   useEffect(() => {
       if (view === 'lyrics' && lyricsContainerRef.current) {
-          const activeEl = lyricsContainerRef.current.children[activeLyricIndex] as HTMLElement;
+          const activeEl = lyricsContainerRef.current.querySelector('[data-active="true"]') as HTMLElement;
           if (activeEl) {
               activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
@@ -693,58 +693,63 @@ const App = () => {
           {/* Background */}
           <div className="absolute inset-0">
               <img src="https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Nature" />
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-2xl"></div>
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-3xl"></div>
               {/* Dynamic light effect */}
               <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
           </div>
           
-          <div className="absolute inset-0 flex flex-col p-6">
-               {/* Header */}
-               <div className="flex items-center justify-between mb-8 z-10">
+          <div className="absolute inset-0 flex flex-col h-full overflow-hidden">
+               {/* Header - Fixed Height */}
+               <div className="flex-none flex items-center justify-between p-6 z-20 bg-gradient-to-b from-black/20 to-transparent">
                    <button onClick={() => setView('player')} className="p-3 bg-white/10 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-white/20 transition-all active:scale-95">
                        <ChevronLeft size={24} />
                    </button>
                    <div className="flex flex-col items-center">
-                       <h3 className="text-white font-bold text-sm tracking-widest uppercase opacity-80">{currentSong?.title}</h3>
-                       <p className="text-white/50 text-xs">{currentSong?.artist}</p>
+                       <h3 className="text-white font-bold text-sm tracking-widest uppercase opacity-80 drop-shadow-md">{currentSong?.title}</h3>
+                       <p className="text-white/50 text-xs drop-shadow-md">{currentSong?.artist}</p>
                    </div>
                    <button className="p-3 text-white/50 hover:text-white transition-colors">
                        <MoreHorizontal size={24} />
                    </button>
                </div>
 
-               {/* Lyrics Container */}
-               <div ref={lyricsContainerRef} className="flex-1 overflow-y-auto no-scrollbar mask-gradient relative z-0 flex flex-col py-[50vh]">
-                   {lyrics.map((line, index) => {
-                       const isActive = index === activeLyricIndex;
-                       return (
-                           <div 
-                               key={index} 
-                               className={`transition-all duration-1000 ease-out mb-10 px-4 text-center cursor-pointer ${isActive ? 'scale-105 opacity-100 blur-0' : 'scale-95 opacity-30 blur-[2px]'}`}
-                               onClick={() => {
-                                   if (audioRef.current) {
-                                       audioRef.current.currentTime = line.time;
-                                       setCurrentTime(line.time);
-                                       setActiveLyricIndex(index);
-                                   }
-                               }}
-                           >
-                               <p className={`font-bold leading-tight transition-all duration-700 ${isActive ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-2xl text-white'}`}>
-                                   {line.text}
-                               </p>
-                           </div>
-                       );
-                   })}
+               {/* Lyrics Container - Flex Grow to Fill available space */}
+               <div className="flex-1 min-h-0 relative z-10 w-full">
+                   <div ref={lyricsContainerRef} className="absolute inset-0 overflow-y-auto no-scrollbar mask-gradient scroll-smooth">
+                       <div className="py-[45vh] px-6 text-center">
+                           {lyrics.map((line, index) => {
+                               const isActive = index === activeLyricIndex;
+                               return (
+                                   <div 
+                                       key={index} 
+                                       data-active={isActive}
+                                       className={`transition-all duration-700 ease-out py-4 cursor-pointer select-none ${isActive ? 'scale-105 opacity-100 blur-0' : 'scale-95 opacity-30 blur-[1px]'}`}
+                                       onClick={() => {
+                                           if (audioRef.current) {
+                                               audioRef.current.currentTime = line.time;
+                                               setCurrentTime(line.time);
+                                               setActiveLyricIndex(index);
+                                           }
+                                       }}
+                                   >
+                                       <p className={`font-bold leading-tight transition-all duration-700 ${isActive ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-2xl text-white'}`}>
+                                           {line.text}
+                                       </p>
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   </div>
                </div>
                
-               {/* Lyrics Control Bar */}
-               <div className="h-24 flex items-center justify-center gap-8 z-10">
+               {/* Lyrics Control Bar - Fixed Height */}
+               <div className="flex-none h-32 flex items-center justify-center gap-8 z-20 bg-gradient-to-t from-black/40 to-transparent pb-6">
                    <button onClick={() => setIsPlaying(!isPlaying)} className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 transition-all">
                        {isPlaying ? <Pause size={24} fill="black" /> : <Play size={24} fill="black" className="ml-1"/>}
                    </button>
                </div>
           </div>
-          <style>{`.mask-gradient { mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 75%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 75%, transparent 100%); }`}</style>
+          <style>{`.mask-gradient { mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%); }`}</style>
       </div>
 
       {/* --- NEW: Landing / Home Screen --- */}
