@@ -765,23 +765,24 @@ const App = () => {
         const cleanArtist = artistKnown ? currentSong.artist : '';
 
         const searchQuery = cleanArtist 
-            ? `full lyrics for song "${cleanTitle}" by artist "${cleanArtist}"`
-            : `full lyrics for song "${cleanTitle}"`;
+            ? `time synced lyrics (LRC) for "${cleanTitle}" by "${cleanArtist}"`
+            : `time synced lyrics (LRC) for song "${cleanTitle}"`;
             
         const prompt = `Search for: ${searchQuery}
         
         Instructions:
         1. Find the full lyrics for this song. MATCH THE ARTIST AND TITLE EXACTLY.
-        2. Output MUST be a strict JSON array of objects.
-        3. Each object must have:
+        2. Priority: Find time-synced (LRC) lyrics with [mm:ss.xx] timestamps.
+        3. Output MUST be a strict JSON array of objects.
+        4. Each object must have:
            - "time": number (timestamp in seconds, e.g. 12.5). Use -1 if timestamp is unknown.
            - "text": string (the lyric line).
-        4. If you find time-synced lyrics (LRC), use the correct timestamps.
-        5. If NOT synced, return the lines in order with "time": -1.
-        6. Do not include any markdown formatting, code blocks, or explanation. ONLY the raw JSON string.
+        5. If you find time-synced lyrics (LRC), convert timestamps to total seconds.
+        6. If NOT synced, return the lines in order with "time": -1.
+        7. Do not include any markdown formatting, code blocks, or explanation. ONLY the raw JSON string.
         
         Structure:
-        [{"time": -1, "text": "Line 1"}, {"time": -1, "text": "Line 2"}]`;
+        [{"time": 12.5, "text": "Line 1"}, {"time": 15.2, "text": "Line 2"}]`;
 
         const config: any = {};
         if (useSearch) {
@@ -1013,8 +1014,8 @@ const App = () => {
       <div className={`absolute inset-0 z-[65] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'lyrics' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           {/* Background */}
           <div className="absolute inset-0">
-              <img src="https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Nature" />
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-3xl"></div>
+              <img src={currentSong?.cover || "https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?q=80&w=1000&auto=format&fit=crop"} className="w-full h-full object-cover" alt="Nature" />
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-3xl"></div>
               {/* Dynamic light effect */}
               <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
           </div>
@@ -1060,20 +1061,32 @@ const App = () => {
 
                    {(currentSong?.lyrics || (currentSong?.source !== 'local' && !isGeneratingLyrics)) && (
                        <div ref={lyricsContainerRef} className="absolute inset-0 overflow-y-auto no-scrollbar mask-gradient scroll-smooth">
-                           <div className="py-[45vh] px-6 text-center">
+                           <div className="py-[45vh] px-8 text-left max-w-2xl mx-auto">
                                {lyrics.map((line, index) => {
                                    const isSynced = line.time >= 0;
                                    const isActive = index === activeLyricIndex;
-                                   // If unsynced, show all as semi-active/readable but style distinctly
-                                   const opacityClass = isSynced 
-                                      ? (isActive ? 'opacity-100 blur-0 scale-105' : 'opacity-30 blur-[1px] scale-95') 
-                                      : 'opacity-90 blur-0 scale-100 my-3';
+                                   const dist = Math.abs(index - activeLyricIndex);
+                                   
+                                   let styleClass = '';
+                                   if (isSynced) {
+                                       if (dist === 0) {
+                                           styleClass = 'text-white scale-110 opacity-100 blur-0 font-extrabold text-3xl my-8 origin-left';
+                                       } else if (dist === 1) {
+                                           styleClass = 'text-white/60 scale-100 opacity-60 blur-[0.5px] font-bold text-2xl my-5 origin-left';
+                                       } else if (dist === 2) {
+                                           styleClass = 'text-white/30 scale-95 opacity-30 blur-[1px] font-semibold text-xl my-4 origin-left';
+                                       } else {
+                                           styleClass = 'text-white/10 scale-90 opacity-10 blur-[2px] font-medium text-lg my-3 origin-left';
+                                       }
+                                   } else {
+                                       styleClass = 'text-white/90 scale-100 opacity-90 blur-0 text-xl my-4 text-center'; 
+                                   }
 
                                    return (
                                        <div 
                                            key={index} 
                                            data-active={isSynced && isActive}
-                                           className={`transition-all duration-700 ease-out py-2 cursor-pointer select-none ${opacityClass}`}
+                                           className={`transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] py-1 cursor-pointer select-none ${styleClass}`}
                                            onClick={() => {
                                                if (isSynced && audioRef.current) {
                                                    audioRef.current.currentTime = line.time;
@@ -1082,7 +1095,7 @@ const App = () => {
                                                }
                                            }}
                                        >
-                                           <p className={`font-bold leading-tight transition-all duration-700 ${isActive && isSynced ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-xl text-white'}`}>
+                                           <p className={`leading-tight drop-shadow-md`}>
                                                {line.text}
                                            </p>
                                        </div>
@@ -1091,8 +1104,8 @@ const App = () => {
                                
                                {/* Sources Display */}
                                {lyricsSources.length > 0 && (
-                                   <div className="mt-12 pt-8 border-t border-white/10 max-w-sm mx-auto">
-                                       <p className="text-xs text-white/40 mb-2 uppercase tracking-widest flex items-center justify-center gap-1"><Globe size={10} /> Sources</p>
+                                   <div className="mt-20 pt-8 border-t border-white/10 max-w-sm mx-auto text-center opacity-50 hover:opacity-100 transition-opacity">
+                                       <p className="text-xs text-white/60 mb-2 uppercase tracking-widest flex items-center justify-center gap-1"><Globe size={10} /> Data Sources</p>
                                        <div className="flex flex-wrap justify-center gap-2">
                                            {lyricsSources.map((source, i) => (
                                                <a key={i} href={source.uri} target="_blank" rel="noreferrer" className="text-[10px] bg-white/5 px-2 py-1 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors truncate max-w-[150px]">
