@@ -733,13 +733,18 @@ const App = () => {
     
     setIsGeneratingLyrics(true);
     setLyricsSources([]);
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Helper function to try generation with or without tools
+    const fetchLyrics = async (useSearch: boolean) => {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) {
+            throw new Error("Missing API Key in process.env.API_KEY");
+        }
+        
+        const ai = new GoogleGenAI({ apiKey });
         
         // 1. Construct a cleaner search query
-        // Remove file extensions if present in title (just in case)
         let cleanTitle = currentSong.title.replace(/\.(mp3|wav|m4a|flac|ogg)$/i, "");
-        // Remove common noise patterns like (Official Video), [HQ], etc.
         cleanTitle = cleanTitle.replace(/[\(\[].*?[\)\]]/g, "").trim();
         
         const artistKnown = currentSong.artist && currentSong.artist !== 'Unknown Artist' && currentSong.artist !== 'Local Upload';
@@ -764,21 +769,33 @@ const App = () => {
         Structure:
         [{"time": -1, "text": "Line 1"}, {"time": -1, "text": "Line 2"}]`;
 
-        const response = await ai.models.generateContent({ 
+        const config: any = {};
+        if (useSearch) {
+            config.tools = [{googleSearch: {}}];
+        }
+
+        return await ai.models.generateContent({ 
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: {
-                tools: [{googleSearch: {}}] 
-            }
+            config: config
         });
+    };
+
+    try {
+        let response;
+        try {
+            // First try with Google Search for better accuracy
+            response = await fetchLyrics(true);
+        } catch (searchError) {
+            console.warn("Search grounding failed or not available, retrying without search tools...", searchError);
+            // Fallback: Try without search tools (pure LLM generation)
+            response = await fetchLyrics(false);
+        }
         
         let text = response.text || "";
         
         // 2. Robust Cleanup
-        // Remove markdown code blocks if present
         text = text.replace(/```json/g, '').replace(/```/g, '');
-        
-        // Find the JSON array brackets to ignore any conversational filler text
         const firstBracket = text.indexOf('[');
         const lastBracket = text.lastIndexOf(']');
         
@@ -804,8 +821,6 @@ const App = () => {
             generatedLyrics = JSON.parse(text);
         } catch (e) {
             console.warn("JSON parse failed. Falling back to raw text processing.", text);
-            // Fallback: Split by newlines and create simple lyrics objects
-            // Remove brackets/braces that might be left over from failed JSON
             const rawLines = response.text?.split('\n') || [];
             generatedLyrics = rawLines
                 .map(l => l.trim())
@@ -815,7 +830,6 @@ const App = () => {
         
         // 5. Final Fallback if empty
         if (!Array.isArray(generatedLyrics) || generatedLyrics.length === 0) {
-            // Check if we have raw text that wasn't parsed
             if (response.text && response.text.length > 20) {
                  generatedLyrics = response.text.split('\n')
                     .map(l => l.trim())
@@ -833,9 +847,14 @@ const App = () => {
         setCurrentSong(updatedSong);
         await updateSongInDB(updatedSong);
 
-    } catch (e) {
+    } catch (e: any) {
         console.error("Error generating lyrics:", e);
-        const errorLyrics = [{ time: 0, text: "Connection error. Please try again or check API Key." }];
+        let errorMsg = "Connection error.";
+        if (e.message?.includes('API_KEY')) errorMsg = "Missing API Key.";
+        else if (e.message?.includes('403')) errorMsg = "API Key Invalid or Quota Exceeded.";
+        else if (e.message?.includes('404')) errorMsg = "Model not found.";
+        
+        const errorLyrics = [{ time: 0, text: `${errorMsg} Please check settings.` }];
         setLyrics(errorLyrics);
         if (currentSong) {
              const errorSong = { ...currentSong, lyrics: errorLyrics };
