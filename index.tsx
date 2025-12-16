@@ -6,7 +6,7 @@ import {
   Disc, Mic2, Music, Download, X, Share, Menu,
   Moon, Activity, Folder, ChevronDown, Youtube, LogIn,
   BarChart2, PlayCircle, Home, Sparkles, Wand2, Save,
-  RefreshCw, FileAudio, Globe, Trash2, ListPlus
+  RefreshCw, FileAudio, Globe, Trash2, ListPlus, Key
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -249,6 +249,13 @@ const App = () => {
   const [visualizerEnabled, setVisualizerEnabled] = useState(true);
   const [eqPreset, setEqPreset] = useState('Flat');
   const [showMyUploads, setShowMyUploads] = useState(false);
+  
+  // API Key State
+  const [userApiKey, setUserApiKey] = useState(() => {
+      try {
+          return localStorage.getItem('space_music_api_key') || '';
+      } catch(e) { return ''; }
+  });
 
   // AI Studio State
   const [aiPrompt, setAiPrompt] = useState('');
@@ -321,6 +328,12 @@ const App = () => {
           else next.add(id);
           return next;
       });
+  };
+  
+  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setUserApiKey(val);
+      localStorage.setItem('space_music_api_key', val);
   };
 
   // Install
@@ -736,9 +749,10 @@ const App = () => {
     
     // Helper function to try generation with or without tools
     const fetchLyrics = async (useSearch: boolean) => {
-        const apiKey = process.env.API_KEY;
+        // Use user key first, fallback to env key
+        const apiKey = userApiKey || process.env.API_KEY;
         if (!apiKey) {
-            throw new Error("Missing API Key in process.env.API_KEY");
+            throw new Error("Missing API Key. Please enter it in Settings.");
         }
         
         const ai = new GoogleGenAI({ apiKey });
@@ -850,11 +864,11 @@ const App = () => {
     } catch (e: any) {
         console.error("Error generating lyrics:", e);
         let errorMsg = "Connection error.";
-        if (e.message?.includes('API_KEY')) errorMsg = "Missing API Key.";
+        if (e.message?.includes('API_KEY') || e.message?.includes('Missing API Key')) errorMsg = "Missing API Key.";
         else if (e.message?.includes('403')) errorMsg = "API Key Invalid or Quota Exceeded.";
         else if (e.message?.includes('404')) errorMsg = "Model not found.";
         
-        const errorLyrics = [{ time: 0, text: `${errorMsg} Please check settings.` }];
+        const errorLyrics = [{ time: 0, text: `${errorMsg} Check Settings > API Key.` }];
         setLyrics(errorLyrics);
         if (currentSong) {
              const errorSong = { ...currentSong, lyrics: errorLyrics };
@@ -1428,15 +1442,38 @@ const App = () => {
               <h2 className="text-xl font-bold">Settings</h2>
               <button onClick={() => setShowSettings(false)} className={`p-2 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}><X size={20}/></button>
             </div>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${darkMode ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}><Moon size={20} /></div>
-                  <span className="font-medium">Dark Mode</span>
-              </div>
-              <button onClick={() => setDarkMode(!darkMode)} className={`w-12 h-7 rounded-full transition-colors relative ${darkMode ? 'bg-indigo-500' : 'bg-gray-300'}`}>
-                  <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform duration-300 ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
+            
+            <div className="space-y-6">
+                {/* Dark Mode Toggle */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${darkMode ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}><Moon size={20} /></div>
+                        <span className="font-medium">Dark Mode</span>
+                    </div>
+                    <button onClick={() => setDarkMode(!darkMode)} className={`w-12 h-7 rounded-full transition-colors relative ${darkMode ? 'bg-indigo-500' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform duration-300 ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                </div>
+
+                {/* API Key Input */}
+                <div className="pt-4 border-t border-gray-200/20">
+                    <div className="flex items-center gap-2 mb-3">
+                         <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-100 text-cyan-600'}`}><Key size={16} /></div>
+                         <h3 className={`text-sm font-bold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Gemini API Key</h3>
+                    </div>
+                    <input 
+                        type="password" 
+                        value={userApiKey}
+                        onChange={handleApiKeyChange}
+                        placeholder="Paste your API Key here..."
+                        className={`w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-200 text-gray-800'}`}
+                    />
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Required for AI lyrics search & sync. Key is stored locally on your device.
+                    </p>
+                </div>
             </div>
+
           </div>
         </div>
       )}
