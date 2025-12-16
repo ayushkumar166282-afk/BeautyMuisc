@@ -319,7 +319,14 @@ const App = () => {
   const isDraggingRef = useRef(false);
   
   const audioRef = useRef<HTMLAudioElement>(null);
+  const crossfadeAudioRef = useRef<HTMLAudioElement>(null); // For outgoing song
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Crossfade & Click Sound Refs
+  const isCrossfading = useRef(false);
+  const crossfadeTransitioning = useRef(false); // Flag to tell useEffect this is a crossfade
+  const clickAudioCtx = useRef<AudioContext | null>(null);
+  const lastClickValue = useRef(0);
 
   const uploadedSongs = playlist.filter(s => s.source === 'local');
   const displayPlaylist = libraryTab === 'youtube' 
@@ -385,10 +392,50 @@ const App = () => {
     }
   };
 
+  // --- PLAYBACK EFFECT & CROSSFADE HANDLING ---
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.play().catch(e => console.error("Playback failed", e));
+        if (crossfadeTransitioning.current) {
+            // CROSSFADE LOGIC
+            // 1. New song (audioRef) starts at volume 0
+            audioRef.current.volume = 0;
+            audioRef.current.play().catch(e => console.error(e));
+            
+            // 2. Outgoing song (crossfadeAudioRef) is already playing at volume 1 (set in trigger)
+            
+            // 3. Ramp volumes over 4 seconds
+            const FADE_DURATION = 4000;
+            const STEPS = 40;
+            const INTERVAL = FADE_DURATION / STEPS;
+            let step = 0;
+            
+            const fadeInterval = setInterval(() => {
+                step++;
+                const progress = step / STEPS;
+                
+                // Ramp up new song
+                if (audioRef.current) audioRef.current.volume = Math.min(1, progress);
+                
+                // Ramp down old song
+                if (crossfadeAudioRef.current) crossfadeAudioRef.current.volume = Math.max(0, 1 - progress);
+                
+                if (step >= STEPS) {
+                    clearInterval(fadeInterval);
+                    if (crossfadeAudioRef.current) {
+                        crossfadeAudioRef.current.pause();
+                        crossfadeAudioRef.current.src = ""; // Clear memory
+                    }
+                    isCrossfading.current = false;
+                }
+            }, INTERVAL);
+            
+            crossfadeTransitioning.current = false;
+        } else {
+            // NORMAL PLAYBACK START
+            audioRef.current.volume = 1;
+            audioRef.current.play().catch(e => console.error("Playback failed", e));
+        }
       } else {
         audioRef.current.pause();
       }
@@ -462,16 +509,44 @@ const App = () => {
 
   const handleTimeUpdate = () => {
     if (audioRef.current && !isDraggingRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
-      setDuration(audioRef.current.duration || 0);
+      const cur = audioRef.current.currentTime;
+      const dur = audioRef.current.duration || 0;
+      setCurrentTime(cur);
+      setDuration(dur);
+      
+      // AUTO CROSSFADE TRIGGER
+      // If within last 4 seconds, playing, not already crossfading, and song is long enough
+      if (dur > 10 && (dur - cur) < 4 && !isCrossfading.current && isPlaying) {
+          triggerCrossfade();
+      }
     }
+  };
+  
+  const triggerCrossfade = () => {
+      isCrossfading.current = true;
+      crossfadeTransitioning.current = true;
+      
+      // 1. Move current playback state to secondary audio element to keep it playing
+      if (crossfadeAudioRef.current && audioRef.current && currentSong) {
+          crossfadeAudioRef.current.src = currentSong.src; // Or audioRef.current.src
+          crossfadeAudioRef.current.currentTime = audioRef.current.currentTime;
+          crossfadeAudioRef.current.volume = 1;
+          crossfadeAudioRef.current.play().catch(e => console.log("Crossfade play error", e));
+      }
+      
+      // 2. Trigger Next Song (this updates state -> re-renders -> triggers useEffect)
+      nextSong();
   };
 
   const handleSongEnd = () => {
-    nextSong();
+    // If crossfade didn't happen for some reason (short song), fallback to standard next
+    if (!isCrossfading.current) {
+        nextSong();
+    }
   };
 
   const playSong = (song: Song) => {
+    isCrossfading.current = false; // Reset if manual play
     if (currentSong?.id === song.id) {
       setIsPlaying(!isPlaying);
       if (view === 'list') setView('player');
@@ -484,8 +559,6 @@ const App = () => {
 
   const nextSong = () => {
     if (!currentSong) return;
-    // Find current index in full playlist to allow cross-source play if desired
-    // Or filter based on current view. Let's do full playlist for continuous play.
     const idx = playlist.findIndex(s => s.id === currentSong.id);
     const nextIdx = (idx + 1) % playlist.length;
     setCurrentSong(playlist[nextIdx]);
@@ -499,9 +572,41 @@ const App = () => {
     setCurrentSong(playlist[prevIdx]);
     setIsPlaying(true);
   };
+  
+  // --- CLICK SOUND ---
+  const playClick = () => {
+      if (!clickAudioCtx.current) {
+          clickAudioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = clickAudioCtx.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.type = 'sine'; // Soft click
+      oscillator.frequency.setValueAtTime(800, ctx.currentTime); 
+      oscillator.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.05);
+
+      gainNode.gain.setValueAtTime(0.05, ctx.currentTime); // Low volume
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + 0.05);
+  };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
+    
+    // Play sound if we crossed an integer threshold (like a gear ticking)
+    if (Math.floor(time) !== Math.floor(lastClickValue.current)) {
+        playClick();
+        lastClickValue.current = time;
+    }
+
     if (audioRef.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
@@ -557,6 +662,9 @@ const App = () => {
         }}
         crossOrigin="anonymous"
       />
+      
+      {/* SECONDARY AUDIO FOR CROSSFADING (HIDDEN) */}
+      <audio ref={crossfadeAudioRef} crossOrigin="anonymous" />
 
       {/* --- Settings Modal --- */}
       {showSettings && (
