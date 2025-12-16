@@ -23,6 +23,11 @@ interface Song {
   fileBlob?: Blob; 
 }
 
+interface LyricLine {
+  time: number;
+  text: string;
+}
+
 // --- IndexedDB Helper ---
 const DB_NAME = 'SpaceMusicDB';
 const DB_VERSION = 1;
@@ -151,6 +156,29 @@ const YOUTUBE_MOCK_SONGS: Song[] = [
   },
 ];
 
+const MOCK_LYRICS: LyricLine[] = [
+    { time: 0, text: "..." },
+    { time: 6, text: "Lost in the echo of the night" },
+    { time: 12, text: "Chasing stars, fading light" },
+    { time: 18, text: "Can you hear the silence calling?" },
+    { time: 24, text: "In the deep, we are falling" },
+    { time: 30, text: "We are the dreamers of the day" },
+    { time: 38, text: "Drifting far, far away" },
+    { time: 46, text: "Underneath the neon sky" },
+    { time: 54, text: "Watching worlds pass us by" },
+    { time: 62, text: "Time is an illusion, a ghost" },
+    { time: 70, text: "Holding on to what we love most" },
+    { time: 78, text: "(Instrumental Break)" },
+    { time: 94, text: "Gravity can't hold us down" },
+    { time: 102, text: "In this universal town" },
+    { time: 110, text: "Let the rhythm guide your soul" },
+    { time: 118, text: "Make you feel, make you whole" },
+    { time: 126, text: "Just close your eyes and breathe" },
+    { time: 134, text: "Believe in what you can't see" },
+    { time: 142, text: "Lost in the echo..." },
+    { time: 150, text: "Of the night..." },
+];
+
 const QUOTES = [
   "Music is the silence between the notes.",
   "Where words fail, music speaks.",
@@ -181,7 +209,7 @@ const App = () => {
   const [playlist, setPlaylist] = useState<Song[]>(SERVER_SONGS);
   const [currentSong, setCurrentSong] = useState<Song | null>(SERVER_SONGS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [view, setView] = useState<'list' | 'player' | 'landing' | 'ai-studio'>('list');
+  const [view, setView] = useState<'list' | 'player' | 'landing' | 'ai-studio' | 'lyrics'>('list');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
@@ -213,6 +241,11 @@ const App = () => {
       } catch (e) { return new Set(); }
   });
   const [showLikedSongs, setShowLikedSongs] = useState(false);
+  
+  // Lyrics Logic
+  const [lyrics, setLyrics] = useState<LyricLine[]>(MOCK_LYRICS);
+  const [activeLyricIndex, setActiveLyricIndex] = useState(0);
+  const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
       localStorage.setItem('space_music_liked_ids', JSON.stringify(Array.from(likedIds)));
@@ -397,11 +430,30 @@ const App = () => {
       setCurrentTime(cur);
       setDuration(dur);
       
+      // Update Active Lyric
+      const idx = lyrics.findIndex((line, i) => {
+         const nextLine = lyrics[i + 1];
+         return cur >= line.time && (!nextLine || cur < nextLine.time);
+      });
+      if (idx !== -1 && idx !== activeLyricIndex) {
+         setActiveLyricIndex(idx);
+      }
+      
       if (dur > 10 && (dur - cur) < 4 && !isCrossfading.current && isPlaying) {
           triggerCrossfade();
       }
     }
   };
+  
+  // Auto-scroll lyrics
+  useEffect(() => {
+      if (view === 'lyrics' && lyricsContainerRef.current) {
+          const activeEl = lyricsContainerRef.current.children[activeLyricIndex] as HTMLElement;
+          if (activeEl) {
+              activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+      }
+  }, [activeLyricIndex, view]);
   
   const triggerCrossfade = () => {
       isCrossfading.current = true;
@@ -429,7 +481,7 @@ const App = () => {
     } else {
       setCurrentSong(song);
       setIsPlaying(true);
-      if (view !== 'ai-studio') setView('player'); // Don't auto-switch view if in AI studio
+      if (view !== 'ai-studio' && view !== 'lyrics') setView('player'); 
     }
   };
 
@@ -636,6 +688,65 @@ const App = () => {
          </div>
       </div>
 
+      {/* --- NEW: Lyrics View --- */}
+      <div className={`absolute inset-0 z-[65] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'lyrics' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          {/* Background */}
+          <div className="absolute inset-0">
+              <img src="https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Nature" />
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-2xl"></div>
+              {/* Dynamic light effect */}
+              <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
+          </div>
+          
+          <div className="absolute inset-0 flex flex-col p-6">
+               {/* Header */}
+               <div className="flex items-center justify-between mb-8 z-10">
+                   <button onClick={() => setView('player')} className="p-3 bg-white/10 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-white/20 transition-all active:scale-95">
+                       <ChevronLeft size={24} />
+                   </button>
+                   <div className="flex flex-col items-center">
+                       <h3 className="text-white font-bold text-sm tracking-widest uppercase opacity-80">{currentSong?.title}</h3>
+                       <p className="text-white/50 text-xs">{currentSong?.artist}</p>
+                   </div>
+                   <button className="p-3 text-white/50 hover:text-white transition-colors">
+                       <MoreHorizontal size={24} />
+                   </button>
+               </div>
+
+               {/* Lyrics Container */}
+               <div ref={lyricsContainerRef} className="flex-1 overflow-y-auto no-scrollbar mask-gradient relative z-0 flex flex-col py-[50vh]">
+                   {lyrics.map((line, index) => {
+                       const isActive = index === activeLyricIndex;
+                       return (
+                           <div 
+                               key={index} 
+                               className={`transition-all duration-1000 ease-out mb-10 px-4 text-center cursor-pointer ${isActive ? 'scale-105 opacity-100 blur-0' : 'scale-95 opacity-30 blur-[2px]'}`}
+                               onClick={() => {
+                                   if (audioRef.current) {
+                                       audioRef.current.currentTime = line.time;
+                                       setCurrentTime(line.time);
+                                       setActiveLyricIndex(index);
+                                   }
+                               }}
+                           >
+                               <p className={`font-bold leading-tight transition-all duration-700 ${isActive ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-2xl text-white'}`}>
+                                   {line.text}
+                               </p>
+                           </div>
+                       );
+                   })}
+               </div>
+               
+               {/* Lyrics Control Bar */}
+               <div className="h-24 flex items-center justify-center gap-8 z-10">
+                   <button onClick={() => setIsPlaying(!isPlaying)} className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 transition-all">
+                       {isPlaying ? <Pause size={24} fill="black" /> : <Play size={24} fill="black" className="ml-1"/>}
+                   </button>
+               </div>
+          </div>
+          <style>{`.mask-gradient { mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 75%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 75%, transparent 100%); }`}</style>
+      </div>
+
       {/* --- NEW: Landing / Home Screen --- */}
       <div className={`absolute inset-0 z-[60] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'landing' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         {/* Background */}
@@ -832,8 +943,8 @@ const App = () => {
         </div>
       </div>
 
-      {/* --- Mini Player (Hidden if landing or ai studio) --- */}
-      {currentSong && view !== 'landing' && view !== 'ai-studio' && (
+      {/* --- Mini Player (Hidden if landing or ai studio or lyrics) --- */}
+      {currentSong && view !== 'landing' && view !== 'ai-studio' && view !== 'lyrics' && (
          <div 
             onClick={() => setView('player')}
             className={`absolute bottom-6 left-6 right-6 z-40 bg-white/80 backdrop-blur-xl border border-white/40 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.1)] rounded-3xl p-2.5 flex items-center cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform 
@@ -930,7 +1041,7 @@ const App = () => {
                </div>
 
                <div className="w-full px-8 pb-10 flex items-center justify-between z-40">
-                  <button className="text-white/40 hover:text-white transition-colors"><Repeat size={20} /></button>
+                  <button onClick={() => setView('lyrics')} className="text-white/70 hover:text-white transition-colors hover:scale-110 active:scale-95"><Mic2 size={24} /></button>
                   <button onClick={prevSong} className="text-white/70 hover:text-white transition-transform active:scale-90 hover:scale-110"><SkipBack size={28} /></button>
                   <button onClick={() => setIsPlaying(!isPlaying)} className="w-20 h-20 bg-white/5 backdrop-blur-md border border-white/20 rounded-full flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all duration-200">
                        {isPlaying ? <Pause size={32} className="text-white fill-white" /> : <Play size={32} className="text-white fill-white ml-1" />}
