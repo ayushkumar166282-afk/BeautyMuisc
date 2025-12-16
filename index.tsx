@@ -6,7 +6,7 @@ import {
   Disc, Mic2, Music, Download, X, Share, Menu,
   Moon, Activity, Folder, ChevronDown, Youtube, LogIn,
   BarChart2, PlayCircle, Home, Sparkles, Wand2, Save,
-  RefreshCw, FileAudio, Globe
+  RefreshCw, FileAudio, Globe, Trash2, ListPlus
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -77,6 +77,18 @@ const updateSongInDB = async (song: Song) => {
     }
 }
 
+const deleteSongFromDB = async (id: string) => {
+  try {
+    const db = await initDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.delete(id);
+    return tx.oncomplete;
+  } catch (err) {
+    console.error('Failed to delete song', err);
+  }
+};
+
 const loadSongsFromDB = async (): Promise<Song[]> => {
   try {
     const db = await initDB();
@@ -135,7 +147,7 @@ const SERVER_SONGS: Song[] = [
     src: 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3',
     color: 'bg-[#1dd1a1]',
     source: 'server'
-  }
+  },
 ];
 
 const YOUTUBE_MOCK_SONGS: Song[] = [
@@ -266,6 +278,12 @@ const App = () => {
   const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
   const [lyricsSources, setLyricsSources] = useState<{ title: string, uri: string }[]>([]);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Context Menu State
+  const [contextMenuSong, setContextMenuSong] = useState<Song | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPress = useRef(false);
 
   useEffect(() => {
       localStorage.setItem('space_music_liked_ids', JSON.stringify(Array.from(likedIds)));
@@ -650,6 +668,65 @@ const App = () => {
     }
   };
 
+  // --- Long Press Logic ---
+  const handleLongPressStart = (song: Song) => {
+    isLongPress.current = false;
+    longPressTimer.current = setTimeout(() => {
+        isLongPress.current = true;
+        setContextMenuSong(song);
+        setShowContextMenu(true);
+        if (navigator.vibrate) navigator.vibrate(50);
+    }, 500);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+    }
+  };
+
+  const handleSongClick = (song: Song) => {
+      if (isLongPress.current) {
+          isLongPress.current = false; 
+          return;
+      }
+      playSong(song);
+  };
+
+  const handlePlayNext = () => {
+      if (!contextMenuSong || !currentSong) return;
+      
+      const songToMove = contextMenuSong;
+      const newPlaylist = playlist.filter(s => s.id !== songToMove.id);
+      const currentIndex = newPlaylist.findIndex(s => s.id === currentSong.id);
+      
+      if (currentIndex !== -1) {
+          newPlaylist.splice(currentIndex + 1, 0, songToMove);
+          setPlaylist(newPlaylist);
+      }
+      setShowContextMenu(false);
+  };
+
+  const handleDelete = async () => {
+      if (!contextMenuSong) return;
+      
+      // Remove from playlist
+      setPlaylist(prev => prev.filter(s => s.id !== contextMenuSong.id));
+      
+      // If playing this song, skip
+      if (currentSong?.id === contextMenuSong.id) {
+          nextSong();
+      }
+
+      // If local, delete from DB
+      if (contextMenuSong.source === 'local') {
+          await deleteSongFromDB(contextMenuSong.id);
+      }
+      
+      setShowContextMenu(false);
+  };
+
   // --- Gemini Lyrics Generation ---
   const generateLyricsForSong = async () => {
     if (!currentSong) return;
@@ -659,16 +736,33 @@ const App = () => {
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
-        const artistQuery = (currentSong.artist && currentSong.artist !== 'Unknown Artist' && currentSong.artist !== 'Local Upload') 
-            ? `by ${currentSong.artist}` 
-            : '';
-            
-        const query = `Find lyrics for the song "${currentSong.title}" ${artistQuery}.`;
+        // 1. Construct a cleaner search query
+        // Remove file extensions if present in title (just in case)
+        let cleanTitle = currentSong.title.replace(/\.(mp3|wav|m4a|flac|ogg)$/i, "");
+        // Remove common noise patterns like (Official Video), [HQ], etc.
+        cleanTitle = cleanTitle.replace(/[\(\[].*?[\)\]]/g, "").trim();
         
-        const prompt = `${query}
-        If you can find synced lyrics (with timestamps), return them as a JSON array of objects with "time" (number in seconds) and "text" (string). 
-        If you CANNOT find synced lyrics, or if the timestamps are missing, return the lyrics as a JSON array of objects with "time" set to -1 and "text" (string).
-        Do not wrap the output in markdown code blocks. Just return the raw JSON string.`;
+        const artistKnown = currentSong.artist && currentSong.artist !== 'Unknown Artist' && currentSong.artist !== 'Local Upload';
+        const cleanArtist = artistKnown ? currentSong.artist : '';
+
+        const searchQuery = cleanArtist 
+            ? `lyrics for "${cleanTitle}" by ${cleanArtist}`
+            : `lyrics for song "${cleanTitle}"`;
+            
+        const prompt = `Search for: ${searchQuery}
+        
+        Instructions:
+        1. Find the full lyrics for this song.
+        2. Output MUST be a strict JSON array of objects.
+        3. Each object must have:
+           - "time": number (timestamp in seconds, e.g. 12.5). Use -1 if timestamp is unknown.
+           - "text": string (the lyric line).
+        4. If you find time-synced lyrics (LRC), use the correct timestamps.
+        5. If NOT synced, return the lines in order with "time": -1.
+        6. Do not include any markdown formatting, code blocks, or explanation. ONLY the raw JSON string.
+        
+        Structure:
+        [{"time": -1, "text": "Line 1"}, {"time": -1, "text": "Line 2"}]`;
 
         const response = await ai.models.generateContent({ 
             model: 'gemini-2.5-flash',
@@ -678,16 +772,21 @@ const App = () => {
             }
         });
         
-        let text = response.text;
+        let text = response.text || "";
         
-        if (!text) {
-             throw new Error("No lyrics text returned from AI");
+        // 2. Robust Cleanup
+        // Remove markdown code blocks if present
+        text = text.replace(/```json/g, '').replace(/```/g, '');
+        
+        // Find the JSON array brackets to ignore any conversational filler text
+        const firstBracket = text.indexOf('[');
+        const lastBracket = text.lastIndexOf(']');
+        
+        if (firstBracket !== -1 && lastBracket !== -1) {
+            text = text.substring(firstBracket, lastBracket + 1);
         }
 
-        // Clean up markdown if present
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        
-        // Extract sources from grounding metadata
+        // 3. Extract Sources
         const sources: { title: string, uri: string }[] = [];
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         if (groundingChunks) {
@@ -699,25 +798,44 @@ const App = () => {
         }
         
         let generatedLyrics: LyricLine[] = [];
+        
+        // 4. Try Parsing
         try {
             generatedLyrics = JSON.parse(text);
         } catch (e) {
-            console.error("JSON parse failed, raw text:", text);
-            // Fallback: split by line and make unsynced
-            generatedLyrics = text.split('\n').filter(l => l.trim()).map(l => ({ time: -1, text: l.trim() }));
+            console.warn("JSON parse failed. Falling back to raw text processing.", text);
+            // Fallback: Split by newlines and create simple lyrics objects
+            // Remove brackets/braces that might be left over from failed JSON
+            const rawLines = response.text?.split('\n') || [];
+            generatedLyrics = rawLines
+                .map(l => l.trim())
+                .filter(l => l.length > 0 && !l.startsWith('```') && !l.startsWith('{') && !l.startsWith('}') && !l.startsWith('b') && !l.startsWith('[') && !l.startsWith(']'))
+                .map(l => ({ time: -1, text: l }));
         }
         
-        if (Array.isArray(generatedLyrics)) {
-            const updatedSong = { ...currentSong, lyrics: generatedLyrics, lyricsSources: sources };
-            setLyrics(generatedLyrics);
-            setLyricsSources(sources);
-            setPlaylist(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
-            setCurrentSong(updatedSong);
-            await updateSongInDB(updatedSong);
+        // 5. Final Fallback if empty
+        if (!Array.isArray(generatedLyrics) || generatedLyrics.length === 0) {
+            // Check if we have raw text that wasn't parsed
+            if (response.text && response.text.length > 20) {
+                 generatedLyrics = response.text.split('\n')
+                    .map(l => l.trim())
+                    .filter(l => l)
+                    .map(l => ({ time: -1, text: l }));
+            } else {
+                generatedLyrics = [{ time: 0, text: "Lyrics could not be found." }];
+            }
         }
+        
+        const updatedSong = { ...currentSong, lyrics: generatedLyrics, lyricsSources: sources };
+        setLyrics(generatedLyrics);
+        setLyricsSources(sources);
+        setPlaylist(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
+        setCurrentSong(updatedSong);
+        await updateSongInDB(updatedSong);
+
     } catch (e) {
         console.error("Error generating lyrics:", e);
-        alert("Could not find lyrics for this song.");
+        setLyrics([{ time: 0, text: "Connection error. Please try again." }]);
     } finally {
         setIsGeneratingLyrics(false);
     }
@@ -1117,7 +1235,16 @@ const App = () => {
             
             <div className="space-y-3">
               {displayPlaylist.map((song) => (
-                <div key={song.id} onClick={() => playSong(song)} className={`group flex items-center p-3 rounded-2xl cursor-pointer transition-all duration-300 ${currentSong?.id === song.id ? (darkMode ? 'bg-slate-800 shadow-md' : 'bg-white shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] scale-[1.02]') : (darkMode ? 'hover:bg-white/5' : 'hover:bg-white hover:shadow-sm')}`}>
+                <div 
+                    key={song.id} 
+                    onClick={() => handleSongClick(song)} 
+                    onPointerDown={() => handleLongPressStart(song)}
+                    onPointerUp={handleLongPressEnd}
+                    onPointerLeave={handleLongPressEnd}
+                    onPointerCancel={handleLongPressEnd}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className={`group flex items-center p-3 rounded-2xl cursor-pointer transition-all duration-300 select-none ${currentSong?.id === song.id ? (darkMode ? 'bg-slate-800 shadow-md' : 'bg-white shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] scale-[1.02]') : (darkMode ? 'hover:bg-white/5' : 'hover:bg-white hover:shadow-sm')}`}
+                >
                   {/* Song Icon Box */}
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm transition-transform group-hover:scale-105 ${song.color || 'bg-gray-400'}`}>
                     {currentSong?.id === song.id && isPlaying ? (
@@ -1311,6 +1438,33 @@ const App = () => {
              </div>
            </div>
         </div>
+      )}
+
+      {/* --- Context Menu (Long Press) --- */}
+      {showContextMenu && contextMenuSong && (
+          <div className="absolute inset-0 z-[80] flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowContextMenu(false)}>
+              <div className={`w-full max-w-md rounded-t-[2rem] p-6 shadow-2xl ${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-gray-800'} transition-transform animate-in slide-in-from-bottom duration-300`} onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-4 mb-6 border-b border-gray-200/10 pb-4">
+                      <img src={contextMenuSong.cover} className="w-14 h-14 rounded-xl object-cover shadow-md" alt={contextMenuSong.title} />
+                      <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-lg truncate">{contextMenuSong.title}</h3>
+                          <p className="text-sm opacity-60 truncate">{contextMenuSong.artist}</p>
+                      </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                      <button onClick={handlePlayNext} className={`w-full p-4 rounded-xl flex items-center gap-4 font-semibold transition-colors ${darkMode ? 'hover:bg-white/10 active:bg-white/20' : 'hover:bg-gray-100 active:bg-gray-200'}`}>
+                          <ListPlus size={20} /> Play Next
+                      </button>
+                      
+                      <button onClick={handleDelete} className={`w-full p-4 rounded-xl flex items-center gap-4 font-semibold text-red-500 transition-colors ${darkMode ? 'hover:bg-red-500/10 active:bg-red-500/20' : 'hover:bg-red-50 active:bg-red-100'}`}>
+                          <Trash2 size={20} /> Delete from App
+                      </button>
+                  </div>
+                  
+                  <button onClick={() => setShowContextMenu(false)} className={`w-full mt-4 py-3 rounded-xl font-bold transition-colors ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-200 hover:bg-gray-300'}`}>Cancel</button>
+              </div>
+          </div>
       )}
 
     </div>
