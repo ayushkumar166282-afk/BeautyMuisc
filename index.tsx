@@ -835,7 +835,13 @@ const App = () => {
 
     } catch (e) {
         console.error("Error generating lyrics:", e);
-        setLyrics([{ time: 0, text: "Connection error. Please try again." }]);
+        const errorLyrics = [{ time: 0, text: "Connection error. Please try again or check API Key." }];
+        setLyrics(errorLyrics);
+        if (currentSong) {
+             const errorSong = { ...currentSong, lyrics: errorLyrics };
+             setCurrentSong(errorSong);
+             setPlaylist(prev => prev.map(s => s.id === currentSong.id ? errorSong : s));
+        }
     } finally {
         setIsGeneratingLyrics(false);
     }
@@ -1472,5 +1478,7 @@ const App = () => {
 };
 
 const container = document.getElementById('root');
-const root = createRoot(container!);
-root.render(<App />);
+if (container) {
+    const root = createRoot(container);
+    root.render(<App />);
+}
