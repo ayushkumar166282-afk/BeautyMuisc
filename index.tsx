@@ -5,7 +5,7 @@ import {
   ChevronLeft, MoreHorizontal, ListMusic, Plus,
   Disc, Mic2, Music, Download, X, Share, Menu,
   Moon, Activity, Folder, ChevronDown, Youtube, LogIn,
-  BarChart2, PlayCircle
+  BarChart2, PlayCircle, Home, Sparkles, Wand2, Save
 } from 'lucide-react';
 
 // --- Types ---
@@ -18,7 +18,7 @@ interface Song {
   cover: string;
   src: string;
   color?: string;
-  source?: 'local' | 'server' | 'youtube'; // Track source
+  source?: 'local' | 'server' | 'youtube' | 'ai'; // Track source
   // For DB storage
   fileBlob?: Blob; 
 }
@@ -149,7 +149,17 @@ const YOUTUBE_MOCK_SONGS: Song[] = [
     color: 'bg-green-500',
     source: 'youtube'
   },
-  // ... more youtube songs if needed
+];
+
+const QUOTES = [
+  "Music is the silence between the notes.",
+  "Where words fail, music speaks.",
+  "Life is like a beautiful melody, only the lyrics are messed up.",
+  "Without music, life would be a mistake.",
+  "Music washes away from the soul the dust of everyday life.",
+  "The only truth is music.",
+  "Music touches us emotionally, where words alone can't.",
+  "Rhythm and harmony find their way into the inward places of the soul."
 ];
 
 // --- Utilities ---
@@ -171,7 +181,7 @@ const App = () => {
   const [playlist, setPlaylist] = useState<Song[]>(SERVER_SONGS);
   const [currentSong, setCurrentSong] = useState<Song | null>(SERVER_SONGS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [view, setView] = useState<'list' | 'player'>('list');
+  const [view, setView] = useState<'list' | 'player' | 'landing' | 'ai-studio'>('list');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
@@ -181,6 +191,14 @@ const App = () => {
   const [visualizerEnabled, setVisualizerEnabled] = useState(true);
   const [eqPreset, setEqPreset] = useState('Flat');
   const [showMyUploads, setShowMyUploads] = useState(false);
+
+  // AI Studio State
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedSongs, setGeneratedSongs] = useState<Song[]>([]);
+
+  // Quotes
+  const [quoteIndex, setQuoteIndex] = useState(0);
 
   // YouTube Integration
   const [youtubeConnected, setYoutubeConnected] = useState(false);
@@ -199,6 +217,14 @@ const App = () => {
   useEffect(() => {
       localStorage.setItem('space_music_liked_ids', JSON.stringify(Array.from(likedIds)));
   }, [likedIds]);
+
+  // Quote Rotation
+  useEffect(() => {
+    const interval = setInterval(() => {
+        setQuoteIndex(prev => (prev + 1) % QUOTES.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, []);
 
   const toggleLike = (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
@@ -403,7 +429,7 @@ const App = () => {
     } else {
       setCurrentSong(song);
       setIsPlaying(true);
-      setView('player');
+      if (view !== 'ai-studio') setView('player'); // Don't auto-switch view if in AI studio
     }
   };
 
@@ -481,6 +507,36 @@ const App = () => {
     }
   };
 
+  const handleAiGenerate = () => {
+    if (!aiPrompt.trim()) return;
+    setIsGenerating(true);
+    // Simulate generation delay
+    setTimeout(() => {
+        const newSong: Song = {
+            id: `ai-${Date.now()}`,
+            title: aiPrompt,
+            artist: 'AI Composer',
+            album: 'AI Studio',
+            duration: 180, 
+            cover: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?q=80&w=1000&auto=format&fit=crop',
+            src: 'https://cdn.pixabay.com/audio/2024/01/16/audio_e2b992254f.mp3', // Placeholder audio
+            color: 'bg-indigo-500',
+            source: 'ai'
+        };
+        setGeneratedSongs(prev => [newSong, ...prev]);
+        setIsGenerating(false);
+        setAiPrompt('');
+    }, 3000);
+  };
+
+  const saveAiSong = (song: Song) => {
+      const savedSong = { ...song, source: 'local' as const };
+      setPlaylist(prev => [...prev, savedSong]);
+      // Note: we can't easily save the remote blob to DB without fetching it first, skipping for demo
+      setView('list');
+      playSong(savedSong);
+  };
+
   const connectYouTube = () => {
       setIsConnectingYT(true);
       setTimeout(() => {
@@ -498,14 +554,160 @@ const App = () => {
       <audio ref={audioRef} src={currentSong?.src} onTimeUpdate={handleTimeUpdate} onEnded={handleSongEnd} onLoadedMetadata={() => { handleTimeUpdate(); updatePositionState(); }} crossOrigin="anonymous" />
       <audio ref={crossfadeAudioRef} crossOrigin="anonymous" />
 
+      {/* --- NEW: AI Studio View --- */}
+      <div className={`absolute inset-0 z-[65] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'ai-studio' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+         {/* Background */}
+         <div className="absolute inset-0">
+             <img src="https://images.unsplash.com/photo-1432405972618-c60b0225b8f9?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Waterfall" />
+             <div className="absolute inset-0 bg-black/30 backdrop-blur-xl"></div>
+         </div>
+         
+         <div className="absolute inset-0 flex flex-col p-6 overflow-y-auto no-scrollbar">
+             {/* Header */}
+             <div className="flex items-center justify-between mb-8">
+                 <button onClick={() => setView('list')} className="p-3 bg-white/10 backdrop-blur-md rounded-2xl text-white border border-white/20 hover:bg-white/20 transition-all">
+                     <ChevronLeft size={24} />
+                 </button>
+                 <h2 className="text-white font-bold text-xl tracking-wide flex items-center gap-2">
+                     <Sparkles size={20} className="text-cyan-300" /> AI Studio
+                 </h2>
+                 <div className="w-12"></div> {/* Spacer */}
+             </div>
+
+             {/* Main Generator Card */}
+             <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-[2rem] p-6 shadow-2xl mb-8 animate-in slide-in-from-bottom-10 fade-in duration-500">
+                 <h3 className="text-white text-lg font-semibold mb-2">Create a masterpiece</h3>
+                 <p className="text-white/60 text-sm mb-6">Describe the mood, genre, or instruments you want to hear.</p>
+                 
+                 <div className="relative mb-6">
+                     <textarea 
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        placeholder="e.g. A lo-fi chill beat with rain sounds and a soft piano melody..."
+                        className="w-full bg-black/20 text-white placeholder-white/40 rounded-2xl p-4 h-32 resize-none focus:outline-none focus:ring-2 focus:ring-cyan-400/50 border border-white/10 transition-all"
+                     />
+                 </div>
+                 
+                 <button 
+                    onClick={handleAiGenerate}
+                    disabled={isGenerating || !aiPrompt.trim()}
+                    className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isGenerating ? 'bg-white/5 cursor-wait' : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-[0_0_20px_rgba(6,182,212,0.5)]'} text-white shadow-lg`}
+                 >
+                     {isGenerating ? (
+                         <>
+                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                             Generating...
+                         </>
+                     ) : (
+                         <>
+                             <Wand2 size={20} /> Generate Music
+                         </>
+                     )}
+                 </button>
+             </div>
+
+             {/* Generated Results */}
+             {generatedSongs.length > 0 && (
+                 <div className="animate-in fade-in duration-500">
+                     <h3 className="text-white/80 font-semibold mb-4 ml-2">Generated Tracks</h3>
+                     <div className="space-y-3 pb-32">
+                         {generatedSongs.map((song) => (
+                             <div key={song.id} className="bg-white/5 backdrop-blur-sm border border-white/10 p-3 rounded-2xl flex items-center group hover:bg-white/10 transition-colors">
+                                 <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center text-white relative overflow-hidden">
+                                     <img src={song.cover} className="w-full h-full object-cover opacity-80" />
+                                     <div className="absolute inset-0 flex items-center justify-center">
+                                        <button onClick={() => playSong(song)} className="p-1.5 bg-white/20 backdrop-blur-md rounded-full hover:scale-110 transition-transform">
+                                            {currentSong?.id === song.id && isPlaying ? <Pause size={16} fill="white" /> : <Play size={16} fill="white" />}
+                                        </button>
+                                     </div>
+                                 </div>
+                                 <div className="ml-3 flex-1 min-w-0">
+                                     <h4 className={`font-bold truncate text-white`}>{song.title}</h4>
+                                     <p className="text-xs text-white/50 truncate">AI Generated • {formatTime(song.duration)}</p>
+                                 </div>
+                                 <button onClick={() => saveAiSong(song)} className="p-2 text-cyan-300 hover:text-white hover:bg-white/10 rounded-full transition-colors" title="Save to Library">
+                                     <Save size={20} />
+                                 </button>
+                             </div>
+                         ))}
+                     </div>
+                 </div>
+             )}
+         </div>
+      </div>
+
+      {/* --- NEW: Landing / Home Screen --- */}
+      <div className={`absolute inset-0 z-[60] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'landing' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        {/* Background */}
+        <div className="absolute inset-0">
+             <img src="https://images.unsplash.com/photo-1473580044384-7ba9967e16a0?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Dunes" />
+             <div className="absolute inset-0 bg-black/10"></div>
+        </div>
+
+        {/* Central Glass Card - OVAL / PILL SHAPE */}
+        <div className="absolute inset-0 flex items-center justify-center p-6">
+            <div className="w-[260px] h-[520px] rounded-[130px] bg-white/5 backdrop-blur-2xl border border-white/20 shadow-2xl flex flex-col items-center justify-between py-10 relative overflow-hidden text-white animate-in zoom-in-95 duration-500">
+                
+                {/* Top Circular Part (Spinning Record) */}
+                <div className="relative mt-2">
+                    <div className="w-40 h-40 rounded-full border-[4px] border-white/10 shadow-2xl overflow-hidden relative flex items-center justify-center bg-black/20">
+                         {/* Spinning artwork */}
+                         <img 
+                            src={currentSong?.cover || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop"} 
+                            className={`w-full h-full object-cover ${isPlaying ? 'animate-[spin_8s_linear_infinite]' : ''}`} 
+                         />
+                         {/* Inner Hole */}
+                         <div className="absolute w-6 h-6 bg-white/20 backdrop-blur-md rounded-full border border-white/30 z-10"></div>
+                    </div>
+                </div>
+
+                {/* Middle: Info & Controls */}
+                <div className="flex flex-col items-center justify-center w-full px-6">
+                     <h2 className="text-xl font-bold text-center mb-1 drop-shadow-md truncate w-full px-4">{currentSong?.title || "Choose a Song"}</h2>
+                     <p className="text-xs text-white/60 mb-6 font-medium tracking-wider uppercase">{currentSong?.artist || "Artist"}</p>
+                     
+                     <div className="flex items-center gap-6">
+                        <button onClick={prevSong} className="text-white/80 hover:text-white transition-transform active:scale-90"><SkipBack size={28} /></button>
+                        <button 
+                            onClick={() => currentSong ? setIsPlaying(!isPlaying) : null} 
+                            className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all"
+                        >
+                            {isPlaying ? <Pause size={20} fill="black" /> : <Play size={20} fill="black" className="ml-1" />}
+                        </button>
+                        <button onClick={nextSong} className="text-white/80 hover:text-white transition-transform active:scale-90"><SkipForward size={28} /></button>
+                     </div>
+                </div>
+
+                {/* Bottom: Quotes */}
+                <div className="px-8 text-center flex flex-col items-center">
+                    <p className="font-light text-sm leading-relaxed italic opacity-80 h-12 flex items-center justify-center">
+                        "{QUOTES[quoteIndex]}"
+                    </p>
+                    
+                    {/* Navigation - Subtle text/icon at very bottom */}
+                    <button 
+                        onClick={() => setView('list')}
+                        className="mt-4 text-white/50 hover:text-white transition-colors flex flex-col items-center gap-1 text-[10px] uppercase tracking-widest"
+                    >
+                        <ChevronDown size={16} />
+                        Library
+                    </button>
+                </div>
+            </div>
+        </div>
+      </div>
+
       {/* --- Main List View --- */}
-      <div className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform ${view === 'player' ? 'scale-92 opacity-0 pointer-events-none blur-md' : 'scale-100 opacity-100 blur-0'}`}>
+      <div className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform ${view !== 'list' ? 'scale-92 opacity-0 pointer-events-none blur-md' : 'scale-100 opacity-100 blur-0'}`}>
         {/* Header Image Section */}
         <div className="relative h-[45%] w-full overflow-hidden">
           <img src="https://images.unsplash.com/photo-1472214103451-9374bd1c798e?q=80&w=1000&auto=format&fit=crop" alt="Nature" className="w-full h-full object-cover filter brightness-[0.85] transition-transform duration-[10s] hover:scale-110"/>
           
           <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-20 mt-2">
-             <button className="p-3 bg-white/10 backdrop-blur-md rounded-2xl text-white border border-white/10 hover:bg-white/20 transition-colors">
+             <button 
+                onClick={() => setView('landing')}
+                className="p-3 bg-white/10 backdrop-blur-md rounded-2xl text-white border border-white/10 hover:bg-white/20 transition-colors"
+             >
                <ChevronLeft size={24} />
              </button>
              <div className="flex gap-3">
@@ -537,6 +739,17 @@ const App = () => {
             <h2 className={`font-bold text-xl mb-5 ml-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>Albums</h2>
             <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
               
+              {/* AI Studio Card - NEW */}
+              <div onClick={() => setView('ai-studio')} className="flex-shrink-0 w-36 h-36 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(6,182,212,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                   <Sparkles className="text-white" size={20} />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-lg leading-tight">AI Studio</p>
+                  <p className="text-white/80 text-xs mt-1 font-medium">Create Magic</p>
+                </div>
+              </div>
+
               {/* Card 1: Intergalaxy (Blue) */}
               <div className="flex-shrink-0 w-36 h-36 bg-[#4facfe] rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(79,172,254,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
                 <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
@@ -619,8 +832,8 @@ const App = () => {
         </div>
       </div>
 
-      {/* --- Mini Player --- */}
-      {currentSong && (
+      {/* --- Mini Player (Hidden if landing or ai studio) --- */}
+      {currentSong && view !== 'landing' && view !== 'ai-studio' && (
          <div 
             onClick={() => setView('player')}
             className={`absolute bottom-6 left-6 right-6 z-40 bg-white/80 backdrop-blur-xl border border-white/40 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.1)] rounded-3xl p-2.5 flex items-center cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform 
