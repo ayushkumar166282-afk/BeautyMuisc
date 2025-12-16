@@ -758,20 +758,20 @@ const App = () => {
         const ai = new GoogleGenAI({ apiKey });
         
         // 1. Construct a cleaner search query
-        let cleanTitle = currentSong.title.replace(/\.(mp3|wav|m4a|flac|ogg)$/i, "");
-        cleanTitle = cleanTitle.replace(/[\(\[].*?[\)\]]/g, "").trim();
+        let cleanTitle = currentSong.title.replace(/\.(mp3|wav|m4a|flac|ogg)$/i, "").trim();
+        // Removed bracket stripping logic here to preserve version info (e.g. Remix, Live) for accuracy
         
         const artistKnown = currentSong.artist && currentSong.artist !== 'Unknown Artist' && currentSong.artist !== 'Local Upload';
         const cleanArtist = artistKnown ? currentSong.artist : '';
 
         const searchQuery = cleanArtist 
-            ? `lyrics for "${cleanTitle}" by ${cleanArtist}`
-            : `lyrics for song "${cleanTitle}"`;
+            ? `full lyrics for song "${cleanTitle}" by artist "${cleanArtist}"`
+            : `full lyrics for song "${cleanTitle}"`;
             
         const prompt = `Search for: ${searchQuery}
         
         Instructions:
-        1. Find the full lyrics for this song.
+        1. Find the full lyrics for this song. MATCH THE ARTIST AND TITLE EXACTLY.
         2. Output MUST be a strict JSON array of objects.
         3. Each object must have:
            - "time": number (timestamp in seconds, e.g. 12.5). Use -1 if timestamp is unknown.
