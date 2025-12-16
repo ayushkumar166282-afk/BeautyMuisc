@@ -6,7 +6,7 @@ import {
   Disc, Mic2, Music, Download, X, Share, Menu,
   Moon, Activity, Folder, ChevronDown, Youtube, LogIn,
   BarChart2, PlayCircle, Home, Sparkles, Wand2, Save,
-  RefreshCw, FileAudio
+  RefreshCw, FileAudio, Globe
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -29,6 +29,7 @@ interface Song {
   // For DB storage
   fileBlob?: Blob;
   lyrics?: LyricLine[];
+  lyricsSources?: { title: string, uri: string }[];
 }
 
 // --- IndexedDB Helper ---
@@ -220,21 +221,6 @@ const formatRulerTime = (time: number) => {
   return formatTime(time);
 };
 
-const blobToBase64 = (blob: Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result.split(',')[1]);
-      } else {
-        reject(new Error('Failed to convert blob to base64'));
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-};
-
 // --- Components ---
 
 const App = () => {
@@ -278,6 +264,7 @@ const App = () => {
   const [lyrics, setLyrics] = useState<LyricLine[]>(MOCK_LYRICS);
   const [activeLyricIndex, setActiveLyricIndex] = useState(0);
   const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
+  const [lyricsSources, setLyricsSources] = useState<{ title: string, uri: string }[]>([]);
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -290,6 +277,13 @@ const App = () => {
         setLyrics(currentSong.lyrics);
     } else {
         setLyrics(MOCK_LYRICS);
+    }
+    
+    // Update sources
+    if (currentSong?.lyricsSources) {
+        setLyricsSources(currentSong.lyricsSources);
+    } else {
+        setLyricsSources([]);
     }
   }, [currentSong]);
 
@@ -473,12 +467,18 @@ const App = () => {
       setDuration(dur);
       
       // Update Active Lyric
-      const idx = lyrics.findIndex((line, i) => {
-         const nextLine = lyrics[i + 1];
-         return cur >= line.time && (!nextLine || cur < nextLine.time);
-      });
-      if (idx !== -1 && idx !== activeLyricIndex) {
-         setActiveLyricIndex(idx);
+      // Only auto-scroll if lyrics are synced (have positive timestamps)
+      const hasSynced = lyrics.some(l => l.time >= 0);
+      if (hasSynced) {
+          const idx = lyrics.findIndex((line, i) => {
+             const nextLine = lyrics[i + 1];
+             // Filter out unsynced lines for logic safety, though mixed is rare
+             if (line.time < 0) return false;
+             return cur >= line.time && (!nextLine || nextLine.time < 0 || cur < nextLine.time);
+          });
+          if (idx !== -1 && idx !== activeLyricIndex) {
+             setActiveLyricIndex(idx);
+          }
       }
       
       if (dur > 10 && (dur - cur) < 4 && !isCrossfading.current && isPlaying) {
@@ -490,12 +490,16 @@ const App = () => {
   // Auto-scroll lyrics
   useEffect(() => {
       if (view === 'lyrics' && lyricsContainerRef.current) {
-          const activeEl = lyricsContainerRef.current.querySelector('[data-active="true"]') as HTMLElement;
-          if (activeEl) {
-              activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Only scroll if synced
+          const hasSynced = lyrics.some(l => l.time >= 0);
+          if (hasSynced) {
+              const activeEl = lyricsContainerRef.current.querySelector('[data-active="true"]') as HTMLElement;
+              if (activeEl) {
+                  activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
           }
       }
-  }, [activeLyricIndex, view]);
+  }, [activeLyricIndex, view, lyrics]);
   
   const triggerCrossfade = () => {
       isCrossfading.current = true;
@@ -580,17 +584,62 @@ const App = () => {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      let title = file.name.replace(/\.[^/.]+$/, "");
+      let artist = "Unknown Artist";
+      let cover = 'https://images.unsplash.com/photo-1619983081563-430f63602796?q=80&w=1000&auto=format&fit=crop';
+      let album = "My Files";
+
+      // 1. Basic Filename Parsing (Artist - Title.mp3)
+      if (title.includes("-")) {
+          const parts = title.split("-");
+          if (parts.length > 1) {
+              artist = parts[0].trim();
+              title = parts.slice(1).join("-").trim();
+          }
+      }
+
+      // 2. Advanced: Attempt to read ID3 tags using jsmediatags
+      if ((window as any).jsmediatags) {
+          try {
+              const tags: any = await new Promise((resolve) => {
+                  (window as any).jsmediatags.read(file, {
+                      onSuccess: (tag: any) => resolve(tag.tags),
+                      onError: (error: any) => {
+                          console.log("Tags error:", error);
+                          resolve(null);
+                      }
+                  });
+              });
+
+              if (tags) {
+                  if (tags.title) title = tags.title;
+                  if (tags.artist) artist = tags.artist;
+                  if (tags.album) album = tags.album;
+                  if (tags.picture) {
+                      const { data, format } = tags.picture;
+                      let base64String = "";
+                      for (let i = 0; i < data.length; i++) {
+                          base64String += String.fromCharCode(data[i]);
+                      }
+                      cover = `data:${format};base64,${window.btoa(base64String)}`;
+                  }
+              }
+          } catch (err) {
+              console.error("Metadata reading failed", err);
+          }
+      }
+
       const url = URL.createObjectURL(file);
       const newSong: Song = {
         id: Date.now().toString(),
-        title: file.name.replace(/\.[^/.]+$/, ""),
-        artist: 'Local Upload',
-        album: 'My Files',
+        title,
+        artist,
+        album,
         duration: 0,
-        cover: 'https://images.unsplash.com/photo-1619983081563-430f63602796?q=80&w=1000&auto=format&fit=crop',
+        cover,
         src: url,
         color: 'bg-purple-500',
         source: 'local'
@@ -603,41 +652,72 @@ const App = () => {
 
   // --- Gemini Lyrics Generation ---
   const generateLyricsForSong = async () => {
-    if (!currentSong || currentSong.source !== 'local' || !currentSong.fileBlob) return;
+    if (!currentSong) return;
     
     setIsGeneratingLyrics(true);
+    setLyricsSources([]);
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const base64Data = await blobToBase64(currentSong.fileBlob);
         
-        const model = ai.models.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const result = await model.generateContent({
-            contents: [
-                {
-                    parts: [
-                        { inlineData: { mimeType: 'audio/mp3', data: base64Data } },
-                        { text: 'Listen to this audio and provide the lyrics with precise timestamps for each line in JSON format. The format should be an array of objects with "time" (number in seconds) and "text" (string) properties. Do not wrap in markdown code blocks.' }
-                    ]
-                }
-            ],
+        const artistQuery = (currentSong.artist && currentSong.artist !== 'Unknown Artist' && currentSong.artist !== 'Local Upload') 
+            ? `by ${currentSong.artist}` 
+            : '';
+            
+        const query = `Find lyrics for the song "${currentSong.title}" ${artistQuery}.`;
+        
+        const prompt = `${query}
+        If you can find synced lyrics (with timestamps), return them as a JSON array of objects with "time" (number in seconds) and "text" (string). 
+        If you CANNOT find synced lyrics, or if the timestamps are missing, return the lyrics as a JSON array of objects with "time" set to -1 and "text" (string).
+        Do not wrap the output in markdown code blocks. Just return the raw JSON string.`;
+
+        const response = await ai.models.generateContent({ 
+            model: 'gemini-2.5-flash',
+            contents: prompt,
             config: {
-                responseMimeType: "application/json",
+                tools: [{googleSearch: {}}] 
             }
         });
         
-        const text = result.response.text();
-        const generatedLyrics = JSON.parse(text);
+        let text = response.text;
+        
+        if (!text) {
+             throw new Error("No lyrics text returned from AI");
+        }
+
+        // Clean up markdown if present
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        // Extract sources from grounding metadata
+        const sources: { title: string, uri: string }[] = [];
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+        if (groundingChunks) {
+            groundingChunks.forEach((chunk: any) => {
+                if (chunk.web?.uri) {
+                    sources.push({ title: chunk.web.title || 'Source', uri: chunk.web.uri });
+                }
+            });
+        }
+        
+        let generatedLyrics: LyricLine[] = [];
+        try {
+            generatedLyrics = JSON.parse(text);
+        } catch (e) {
+            console.error("JSON parse failed, raw text:", text);
+            // Fallback: split by line and make unsynced
+            generatedLyrics = text.split('\n').filter(l => l.trim()).map(l => ({ time: -1, text: l.trim() }));
+        }
         
         if (Array.isArray(generatedLyrics)) {
-            const updatedSong = { ...currentSong, lyrics: generatedLyrics };
+            const updatedSong = { ...currentSong, lyrics: generatedLyrics, lyricsSources: sources };
             setLyrics(generatedLyrics);
+            setLyricsSources(sources);
             setPlaylist(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
             setCurrentSong(updatedSong);
             await updateSongInDB(updatedSong);
         }
     } catch (e) {
         console.error("Error generating lyrics:", e);
-        alert("Failed to generate lyrics. Please try again.");
+        alert("Could not find lyrics for this song.");
     } finally {
         setIsGeneratingLyrics(false);
     }
@@ -807,17 +887,17 @@ const App = () => {
                                 onClick={generateLyricsForSong}
                                 className="px-6 py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-full text-white font-bold flex items-center gap-2 mx-auto hover:bg-white/20 transition-all active:scale-95 shadow-lg shadow-purple-500/20"
                            >
-                                <Sparkles size={18} className="text-purple-300" /> Generate Synced Lyrics
+                                <Sparkles size={18} className="text-purple-300" /> Search & Sync Lyrics
                            </button>
-                           <p className="text-xs text-white/30 mt-4 max-w-xs mx-auto">Powered by Gemini AI. Extracts text and timings directly from audio.</p>
+                           <p className="text-xs text-white/30 mt-4 max-w-xs mx-auto">Powered by Gemini. Searches the web for lyrics and attempts to sync them.</p>
                        </div>
                    )}
                    
                    {isGeneratingLyrics && (
                        <div className="text-center p-6 animate-in fade-in zoom-in-95 duration-500">
                            <div className="w-12 h-12 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin mx-auto mb-6"></div>
-                           <h3 className="text-white font-bold text-lg mb-2">Listening & Transcribing...</h3>
-                           <p className="text-white/50 text-sm">This may take a moment</p>
+                           <h3 className="text-white font-bold text-lg mb-2">Searching Lyrics...</h3>
+                           <p className="text-white/50 text-sm">Consulting the oracle</p>
                        </div>
                    )}
 
@@ -825,26 +905,46 @@ const App = () => {
                        <div ref={lyricsContainerRef} className="absolute inset-0 overflow-y-auto no-scrollbar mask-gradient scroll-smooth">
                            <div className="py-[45vh] px-6 text-center">
                                {lyrics.map((line, index) => {
+                                   const isSynced = line.time >= 0;
                                    const isActive = index === activeLyricIndex;
+                                   // If unsynced, show all as semi-active/readable but style distinctly
+                                   const opacityClass = isSynced 
+                                      ? (isActive ? 'opacity-100 blur-0 scale-105' : 'opacity-30 blur-[1px] scale-95') 
+                                      : 'opacity-90 blur-0 scale-100 my-3';
+
                                    return (
                                        <div 
                                            key={index} 
-                                           data-active={isActive}
-                                           className={`transition-all duration-700 ease-out py-4 cursor-pointer select-none ${isActive ? 'scale-105 opacity-100 blur-0' : 'scale-95 opacity-30 blur-[1px]'}`}
+                                           data-active={isSynced && isActive}
+                                           className={`transition-all duration-700 ease-out py-2 cursor-pointer select-none ${opacityClass}`}
                                            onClick={() => {
-                                               if (audioRef.current) {
+                                               if (isSynced && audioRef.current) {
                                                    audioRef.current.currentTime = line.time;
                                                    setCurrentTime(line.time);
                                                    setActiveLyricIndex(index);
                                                }
                                            }}
                                        >
-                                           <p className={`font-bold leading-tight transition-all duration-700 ${isActive ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-2xl text-white'}`}>
+                                           <p className={`font-bold leading-tight transition-all duration-700 ${isActive && isSynced ? 'text-3xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-xl text-white'}`}>
                                                {line.text}
                                            </p>
                                        </div>
                                    );
                                })}
+                               
+                               {/* Sources Display */}
+                               {lyricsSources.length > 0 && (
+                                   <div className="mt-12 pt-8 border-t border-white/10 max-w-sm mx-auto">
+                                       <p className="text-xs text-white/40 mb-2 uppercase tracking-widest flex items-center justify-center gap-1"><Globe size={10} /> Sources</p>
+                                       <div className="flex flex-wrap justify-center gap-2">
+                                           {lyricsSources.map((source, i) => (
+                                               <a key={i} href={source.uri} target="_blank" rel="noreferrer" className="text-[10px] bg-white/5 px-2 py-1 rounded hover:bg-white/10 text-white/60 hover:text-white transition-colors truncate max-w-[150px]">
+                                                   {source.title}
+                                               </a>
+                                           ))}
+                                       </div>
+                                   </div>
+                               )}
                            </div>
                        </div>
                    )}
