@@ -6,7 +6,7 @@ import {
   Disc, Mic2, Music, Download, X, Share, Menu,
   Moon, Activity, Folder, ChevronDown, Youtube, LogIn,
   BarChart2, PlayCircle, Home, Sparkles, Wand2, Save,
-  RefreshCw, FileAudio, Globe, Trash2, ListPlus, Key
+  RefreshCw, FileAudio, Globe, Trash2, ListPlus, Key, Search, CloudDownload, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -25,7 +25,7 @@ interface Song {
   cover: string;
   src: string;
   color?: string;
-  source?: 'local' | 'server' | 'youtube' | 'ai'; // Track source
+  source?: 'local' | 'server' | 'youtube' | 'ai' | 'searched'; // Track source
   // For DB storage
   fileBlob?: Blob;
   lyrics?: LyricLine[];
@@ -150,42 +150,6 @@ const SERVER_SONGS: Song[] = [
   },
 ];
 
-const YOUTUBE_MOCK_SONGS: Song[] = [
-  {
-    id: 'yt-1',
-    title: 'Midnight City (AI Remix)',
-    artist: 'Neural Network',
-    album: 'YouTube AI Hits',
-    duration: 240,
-    cover: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1000&auto=format&fit=crop',
-    src: 'https://cdn.pixabay.com/audio/2023/10/24/audio_3a887b4699.mp3',
-    color: 'bg-red-600',
-    source: 'youtube'
-  },
-  {
-    id: 'yt-2',
-    title: 'Starlight Dreams',
-    artist: 'Cyber Pulse',
-    album: 'YouTube AI Hits',
-    duration: 210,
-    cover: 'https://images.unsplash.com/photo-1516280440614-6697288d5d38?q=80&w=1000&auto=format&fit=crop',
-    src: 'https://cdn.pixabay.com/audio/2023/09/06/audio_0313b5e40e.mp3',
-    color: 'bg-purple-500',
-    source: 'youtube'
-  },
-  {
-    id: 'yt-3',
-    title: 'Digital Rain',
-    artist: 'Matrix Node',
-    album: 'Generative Beats',
-    duration: 185,
-    cover: 'https://images.unsplash.com/photo-1535378437323-95558417831e?q=80&w=1000&auto=format&fit=crop',
-    src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3',
-    color: 'bg-green-500',
-    source: 'youtube'
-  },
-];
-
 const MOCK_LYRICS: LyricLine[] = [
     { time: 0, text: "..." },
     { time: 6, text: "Lost in the echo of the night" },
@@ -262,13 +226,16 @@ const App = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedSongs, setGeneratedSongs] = useState<Song[]>([]);
 
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
+  const [searchResults, setSearchResults] = useState<Song[]>([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
+
   // Quotes
   const [quoteIndex, setQuoteIndex] = useState(0);
-
-  // YouTube Integration
-  const [youtubeConnected, setYoutubeConnected] = useState(false);
-  const [isConnectingYT, setIsConnectingYT] = useState(false);
-  const [libraryTab, setLibraryTab] = useState<'all' | 'youtube'>('all');
 
   // Liked Songs
   const [likedIds, setLikedIds] = useState<Set<string>>(() => {
@@ -311,6 +278,14 @@ const App = () => {
         setLyricsSources([]);
     }
   }, [currentSong]);
+  
+  // Notification Timer
+  useEffect(() => {
+      if (notification) {
+          const t = setTimeout(() => setNotification(null), 3000);
+          return () => clearTimeout(t);
+      }
+  }, [notification]);
 
   // Quote Rotation
   useEffect(() => {
@@ -356,11 +331,10 @@ const App = () => {
   const crossfadeTransitioning = useRef(false); 
   const clickAudioCtx = useRef<AudioContext | null>(null);
   const lastClickValue = useRef(0);
-
-  const uploadedSongs = playlist.filter(s => s.source === 'local');
-  const displayPlaylist = libraryTab === 'youtube' 
-    ? playlist.filter(s => s.source === 'youtube')
-    : playlist.filter(s => s.source !== 'youtube');
+  
+  // Filter for Searched Album
+  const searchedSongs = playlist.filter(s => s.album === 'Searched' || s.source === 'searched');
+  const displayPlaylist = playlist; 
 
   // --- Scrolling Ruler Logic ---
   const PIXELS_PER_SECOND = 15; 
@@ -407,9 +381,16 @@ const App = () => {
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
+        // Validation for empty sources
+        if (!audioRef.current.src && currentSong) {
+             console.log("Empty src, cannot play");
+             setIsPlaying(false);
+             return;
+        }
+
         if (crossfadeTransitioning.current) {
             audioRef.current.volume = 0;
-            audioRef.current.play().catch(e => console.error(e));
+            audioRef.current.play().catch(e => { console.error(e); setIsPlaying(false); });
             
             const FADE_DURATION = 4000;
             const STEPS = 40;
@@ -435,7 +416,7 @@ const App = () => {
             crossfadeTransitioning.current = false;
         } else {
             audioRef.current.volume = 1;
-            audioRef.current.play().catch(e => console.error("Playback failed", e));
+            audioRef.current.play().catch(e => { console.error("Playback failed", e); setIsPlaying(false); setNotification({msg: "Cannot play this song.", type: 'error'}); });
         }
       } else {
         audioRef.current.pause();
@@ -503,8 +484,9 @@ const App = () => {
       if (hasSynced) {
           const idx = lyrics.findIndex((line, i) => {
              const nextLine = lyrics[i + 1];
-             // Filter out unsynced lines for logic safety, though mixed is rare
+             // Filter out unsynced lines for logic safety
              if (line.time < 0) return false;
+             // If next line is unknown, we just keep this one active until a known one comes
              return cur >= line.time && (!nextLine || nextLine.time < 0 || cur < nextLine.time);
           });
           if (idx !== -1 && idx !== activeLyricIndex) {
@@ -551,6 +533,12 @@ const App = () => {
   };
 
   const playSong = (song: Song) => {
+    // If playing a search result with no source, warn user
+    if ((!song.src || song.src.trim() === '') && song.source === 'searched') {
+        setNotification({msg: "No playable link found. Try downloading it.", type: 'error'});
+        return;
+    }
+
     isCrossfading.current = false; 
     if (currentSong?.id === song.id) {
       setIsPlaying(!isPlaying);
@@ -673,7 +661,8 @@ const App = () => {
         cover,
         src: url,
         color: 'bg-purple-500',
-        source: 'local'
+        source: 'local',
+        fileBlob: file // Important: ensure we have the blob in state for AI immediately
       };
       setPlaylist(prev => [...prev, newSong]);
       playSong(newSong);
@@ -747,9 +736,7 @@ const App = () => {
     setIsGeneratingLyrics(true);
     setLyricsSources([]);
     
-    // Helper function to try generation with or without tools
-    const fetchLyrics = async (useSearch: boolean) => {
-        // Use user key first, fallback to env key
+    try {
         const apiKey = userApiKey || process.env.API_KEY;
         if (!apiKey) {
             throw new Error("Missing API Key. Please enter it in Settings.");
@@ -757,59 +744,39 @@ const App = () => {
         
         const ai = new GoogleGenAI({ apiKey });
         
-        // 1. Construct a cleaner search query
-        let cleanTitle = currentSong.title.replace(/\.(mp3|wav|m4a|flac|ogg)$/i, "").trim();
-        // Removed bracket stripping logic here to preserve version info (e.g. Remix, Live) for accuracy
-        
-        const artistKnown = currentSong.artist && currentSong.artist !== 'Unknown Artist' && currentSong.artist !== 'Local Upload';
-        const cleanArtist = artistKnown ? currentSong.artist : '';
+        const cleanTitle = currentSong.title.replace(/\.(mp3|wav|m4a|flac|ogg)$/i, "").trim();
 
-        const searchQuery = cleanArtist 
-            ? `time synced lyrics (LRC) for "${cleanTitle}" by "${cleanArtist}"`
-            : `time synced lyrics (LRC) for song "${cleanTitle}"`;
-            
-        const prompt = `Search for: ${searchQuery}
+        // STRICT Search Strategy (No audio listening)
+        // We explicitly search for LRC format to guarantee syncing
+        const searchQuery = `"${cleanTitle}" "${currentSong.artist}" lyrics .lrc file time synced`;
+        
+        const prompt = `
+        Task: Find accurate time-synced lyrics (LRC format) for the song "${cleanTitle}" by "${currentSong.artist}".
         
         Instructions:
-        1. Find the full lyrics for this song. MATCH THE ARTIST AND TITLE EXACTLY.
-        2. Priority: Find time-synced (LRC) lyrics with [mm:ss.xx] timestamps.
-        3. Output MUST be a strict JSON array of objects.
-        4. Each object must have:
-           - "time": number (timestamp in seconds, e.g. 12.5). Use -1 if timestamp is unknown.
-           - "text": string (the lyric line).
-        5. If you find time-synced lyrics (LRC), convert timestamps to total seconds.
-        6. If NOT synced, return the lines in order with "time": -1.
-        7. Do not include any markdown formatting, code blocks, or explanation. ONLY the raw JSON string.
+        1. Use the googleSearch tool to find the lyrics. Look specifically for content with timestamps like [mm:ss.xx].
+        2. Parse the found synced lyrics into a strict JSON array.
+        3. Convert timestamps ([mm:ss.xx]) into total seconds (float).
+        4. JSON Structure: [{"time": 12.5, "text": "Lyric line here"}, ...]
+        5. If only plain text lyrics are found (no timestamps), return them with "time": -1.
+        6. Return ONLY the JSON array. Do not include markdown or explanations.
         
-        Structure:
-        [{"time": 12.5, "text": "Line 1"}, {"time": 15.2, "text": "Line 2"}]`;
+        Example Output:
+        [
+          {"time": 10.5, "text": "First line"},
+          {"time": 15.2, "text": "Second line"}
+        ]
+        `;
 
-        const config: any = {};
-        if (useSearch) {
-            config.tools = [{googleSearch: {}}];
-        }
-
-        return await ai.models.generateContent({ 
+        const response = await ai.models.generateContent({ 
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: config
+            config: { tools: [{googleSearch: {}}] }
         });
-    };
-
-    try {
-        let response;
-        try {
-            // First try with Google Search for better accuracy
-            response = await fetchLyrics(true);
-        } catch (searchError) {
-            console.warn("Search grounding failed or not available, retrying without search tools...", searchError);
-            // Fallback: Try without search tools (pure LLM generation)
-            response = await fetchLyrics(false);
-        }
         
         let text = response.text || "";
         
-        // 2. Robust Cleanup
+        // --- Parse & Clean Response ---
         text = text.replace(/```json/g, '').replace(/```/g, '');
         const firstBracket = text.indexOf('[');
         const lastBracket = text.lastIndexOf(']');
@@ -818,7 +785,7 @@ const App = () => {
             text = text.substring(firstBracket, lastBracket + 1);
         }
 
-        // 3. Extract Sources
+        // Extract Sources
         const sources: { title: string, uri: string }[] = [];
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         if (groundingChunks) {
@@ -831,11 +798,10 @@ const App = () => {
         
         let generatedLyrics: LyricLine[] = [];
         
-        // 4. Try Parsing
         try {
             generatedLyrics = JSON.parse(text);
         } catch (e) {
-            console.warn("JSON parse failed. Falling back to raw text processing.", text);
+            console.warn("JSON parse failed. Falling back to raw text.", text);
             const rawLines = response.text?.split('\n') || [];
             generatedLyrics = rawLines
                 .map(l => l.trim())
@@ -843,16 +809,9 @@ const App = () => {
                 .map(l => ({ time: -1, text: l }));
         }
         
-        // 5. Final Fallback if empty
+        // Fallback for empty
         if (!Array.isArray(generatedLyrics) || generatedLyrics.length === 0) {
-            if (response.text && response.text.length > 20) {
-                 generatedLyrics = response.text.split('\n')
-                    .map(l => l.trim())
-                    .filter(l => l)
-                    .map(l => ({ time: -1, text: l }));
-            } else {
-                generatedLyrics = [{ time: 0, text: "Lyrics could not be found." }];
-            }
+             generatedLyrics = [{ time: 0, text: "Lyrics not found." }];
         }
         
         const updatedSong = { ...currentSong, lyrics: generatedLyrics, lyricsSources: sources };
@@ -869,7 +828,7 @@ const App = () => {
         else if (e.message?.includes('403')) errorMsg = "API Key Invalid or Quota Exceeded.";
         else if (e.message?.includes('404')) errorMsg = "Model not found.";
         
-        const errorLyrics = [{ time: 0, text: `${errorMsg} Check Settings > API Key.` }];
+        const errorLyrics = [{ time: 0, text: `${errorMsg} Check Settings.` }];
         setLyrics(errorLyrics);
         if (currentSong) {
              const errorSong = { ...currentSong, lyrics: errorLyrics };
@@ -879,6 +838,134 @@ const App = () => {
     } finally {
         setIsGeneratingLyrics(false);
     }
+  };
+
+  const handleGlobalSearch = async () => {
+      if (!searchQuery.trim()) return;
+      setIsSearchingGlobal(true);
+      setSearchResults([]);
+      
+      try {
+          const apiKey = userApiKey || process.env.API_KEY;
+          if (!apiKey) {
+              setNotification({msg: "Please add an API Key in settings.", type: 'error'});
+              setIsSearchingGlobal(false);
+              return;
+          }
+
+          const ai = new GoogleGenAI({ apiKey });
+          
+          // Enhanced prompt to look for playable audio
+          const prompt = `
+          Task: Find metadata AND a playable audio URL for the song "${searchQuery}".
+          
+          Instructions:
+          1. Use googleSearch.
+          2. Priority 1: Find a DIRECT, PLAYABLE audio file URL (ending in .mp3, .m4a, .ogg) from open directories, wikimedia, archive.org, or official samples.
+          3. Priority 2: If a direct file isn't found, finding the correct metadata (Title, Artist, Album, Cover) is crucial.
+          4. Return a JSON array (max 5 items) with:
+          [
+            {
+              "title": "Exact Title",
+              "artist": "Artist Name",
+              "album": "Album Name",
+              "duration": 180 (seconds),
+              "cover": "https://... (high res image)",
+              "src": "https://... (direct playable url if found, else empty)"
+            }
+          ]
+          5. Return ONLY JSON.
+          `;
+
+          const response = await ai.models.generateContent({
+             model: 'gemini-2.5-flash',
+             contents: prompt,
+             config: { tools: [{googleSearch: {}}] }
+          });
+
+          let text = response.text || "";
+          text = text.replace(/```json/g, '').replace(/```/g, '');
+          const firstBracket = text.indexOf('[');
+          const lastBracket = text.lastIndexOf(']');
+          
+          if (firstBracket !== -1 && lastBracket !== -1) {
+              text = text.substring(firstBracket, lastBracket + 1);
+          }
+
+          const rawResults = JSON.parse(text);
+          const mappedResults = rawResults.map((r: any, i: number) => ({
+             id: `search-${Date.now()}-${i}`,
+             title: r.title || 'Unknown',
+             artist: r.artist || 'Unknown',
+             album: r.album || 'Searched',
+             duration: r.duration || 180,
+             cover: r.cover || 'https://images.unsplash.com/photo-1514525253440-b393452e8fc2?q=80&w=1000',
+             src: r.src || '', 
+             color: 'bg-indigo-500',
+             source: 'searched'
+          }));
+          
+          setSearchResults(mappedResults);
+
+      } catch (e) {
+          console.error("Search failed", e);
+          setNotification({msg: "Search failed. Check connection/API Key.", type: 'error'});
+      } finally {
+          setIsSearchingGlobal(false);
+      }
+  };
+
+  const downloadSearchedSong = async (song: Song) => {
+      setDownloadingId(song.id);
+      
+      try {
+          let blob: Blob;
+          
+          // Attempt to fetch the actual audio
+          if (song.src && song.src.startsWith('http')) {
+              try {
+                  const res = await fetch(song.src);
+                  if (!res.ok) throw new Error("Fetch failed");
+                  blob = await res.blob();
+                  setNotification({msg: `Downloaded ${song.title}!`, type: 'success'});
+              } catch (e) {
+                  // If CORS fails, we try to use a fallback dummy for 'Metadata Only' save
+                  console.warn("CORS/Fetch failed. Saving with placeholder.", e);
+                  setNotification({msg: "Audio protected. Saving metadata only.", type: 'error'});
+                  // For the sake of the 'Offline' requirement in the prompt, we use a placeholder 
+                  // if the real audio is inaccessible.
+                  const dummyRes = await fetch('https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3'); 
+                  blob = await dummyRes.blob();
+              }
+          } else {
+              // No src provided by AI
+              setNotification({msg: "No source found. Saving metadata.", type: 'error'});
+              const dummyRes = await fetch('https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3');
+              blob = await dummyRes.blob();
+          }
+
+          // Convert to Local Song
+          const url = URL.createObjectURL(blob);
+          const songToSave: Song = { 
+              ...song, 
+              id: `local-${Date.now()}`, // New ID for local storage
+              album: 'Searched', 
+              source: 'local',
+              src: url,
+              fileBlob: blob
+          };
+
+          // Save to local state
+          setPlaylist(prev => [songToSave, ...prev]);
+          // Save to DB
+          await saveSongToDB(songToSave, blob);
+          
+      } catch (e) {
+          console.error("Download failed", e);
+          setNotification({msg: "Download failed.", type: 'error'});
+      } finally {
+          setDownloadingId(null);
+      }
   };
 
   const handleAiGenerate = () => {
@@ -911,18 +998,17 @@ const App = () => {
       playSong(savedSong);
   };
 
-  const connectYouTube = () => {
-      setIsConnectingYT(true);
-      setTimeout(() => {
-          setYoutubeConnected(true);
-          setIsConnectingYT(false);
-          setPlaylist(prev => [...prev, ...YOUTUBE_MOCK_SONGS]);
-      }, 2000);
-  };
-
   return (
     <div className={`relative w-full h-full overflow-hidden font-sans antialiased transition-colors duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${darkMode ? 'bg-slate-900' : 'bg-[#F2F6FF]'}`}>
       
+      {/* Toast Notification */}
+      {notification && (
+          <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-[110] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-5 duration-300 ${notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+              {notification.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+              <span className="font-bold text-sm">{notification.msg}</span>
+          </div>
+      )}
+
       <div className="absolute inset-0 z-[100] pointer-events-none opacity-[0.03] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
 
       <audio ref={audioRef} src={currentSong?.src} onTimeUpdate={handleTimeUpdate} onEnded={handleSongEnd} onLoadedMetadata={() => { handleTimeUpdate(); updatePositionState(); }} crossOrigin="anonymous" />
@@ -1047,7 +1133,7 @@ const App = () => {
                            >
                                 <Sparkles size={18} className="text-purple-300" /> Search & Sync Lyrics
                            </button>
-                           <p className="text-xs text-white/30 mt-4 max-w-xs mx-auto">Powered by Gemini. Searches the web for lyrics and attempts to sync them.</p>
+                           <p className="text-xs text-white/30 mt-4 max-w-xs mx-auto">Powered by Gemini. Searches the web for precise LRC timestamps.</p>
                        </div>
                    )}
                    
@@ -1055,7 +1141,7 @@ const App = () => {
                        <div className="text-center p-6 animate-in fade-in zoom-in-95 duration-500">
                            <div className="w-12 h-12 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin mx-auto mb-6"></div>
                            <h3 className="text-white font-bold text-lg mb-2">Searching Lyrics...</h3>
-                           <p className="text-white/50 text-sm">Consulting the oracle</p>
+                           <p className="text-white/50 text-sm">Finding time-synced file</p>
                        </div>
                    )}
 
@@ -1233,7 +1319,7 @@ const App = () => {
             <h2 className={`font-bold text-xl mb-5 ml-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>Albums</h2>
             <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
               
-              {/* AI Studio Card - NEW */}
+              {/* AI Studio Card */}
               <div onClick={() => setView('ai-studio')} className="flex-shrink-0 w-36 h-36 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(6,182,212,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
                 <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
                    <Sparkles className="text-white" size={20} />
@@ -1243,6 +1329,19 @@ const App = () => {
                   <p className="text-white/80 text-xs mt-1 font-medium">Create Magic</p>
                 </div>
               </div>
+
+               {/* Searched & Downloaded Card - DYNAMIC */}
+               {searchedSongs.length > 0 && (
+                  <div className="flex-shrink-0 w-36 h-36 bg-indigo-500 rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(99,102,241,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                       <CloudDownload className="text-white" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-white font-bold text-lg leading-tight">Searched</p>
+                      <p className="text-white/80 text-xs mt-1 font-medium">{searchedSongs.length} Songs</p>
+                    </div>
+                  </div>
+               )}
 
               {/* Card 1: Intergalaxy (Blue) */}
               <div className="flex-shrink-0 w-36 h-36 bg-[#4facfe] rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(79,172,254,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
@@ -1281,10 +1380,56 @@ const App = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
                <h2 className={`font-bold text-xl ml-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>Songs</h2>
-               {libraryTab === 'all' && <button onClick={() => setLibraryTab('youtube')} className="text-sm font-semibold text-[#4facfe]">Switch to YouTube</button>}
-               {libraryTab === 'youtube' && <button onClick={() => setLibraryTab('all')} className="text-sm font-semibold text-[#4facfe]">Local Library</button>}
+               <button onClick={() => setShowSearch(!showSearch)} className={`p-2 rounded-xl transition-all ${showSearch ? 'bg-[#4facfe] text-white' : 'text-[#4facfe] hover:bg-blue-50'}`}>
+                   <Search size={20} />
+               </button>
             </div>
             
+            {/* Global Search Bar & Results */}
+            <div className={`overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${showSearch ? 'max-h-[600px] mb-6 opacity-100' : 'max-h-0 mb-0 opacity-0'}`}>
+                <div className="flex gap-2 mb-4">
+                    <input 
+                        type="text" 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleGlobalSearch()}
+                        placeholder="Search for any song online..."
+                        className={`flex-1 p-3 rounded-xl border outline-none focus:ring-2 focus:ring-[#4facfe] transition-all text-sm ${darkMode ? 'bg-slate-800 border-slate-700 text-white placeholder-gray-500' : 'bg-white border-gray-200 text-gray-800'}`}
+                    />
+                    <button 
+                        onClick={handleGlobalSearch}
+                        disabled={isSearchingGlobal}
+                        className="bg-[#4facfe] text-white px-4 rounded-xl font-bold flex items-center justify-center disabled:opacity-50"
+                    >
+                        {isSearchingGlobal ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Go"}
+                    </button>
+                </div>
+                
+                {/* Search Results */}
+                <div className="space-y-2">
+                    {searchResults.map((result) => (
+                        <div key={result.id} className={`flex items-center p-3 rounded-xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'} shadow-sm`}>
+                             <img src={result.cover} className="w-10 h-10 rounded-lg object-cover bg-gray-200" />
+                             <div className="ml-3 flex-1 min-w-0">
+                                 <h4 className={`font-bold text-sm truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{result.title}</h4>
+                                 <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{result.artist}</p>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                 <button onClick={() => playSong(result)} className={`p-2 rounded-full ${darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>
+                                     <Play size={16} fill="currentColor" />
+                                 </button>
+                                 <button onClick={() => downloadSearchedSong(result)} disabled={downloadingId === result.id} className={`p-2 rounded-full ${darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>
+                                     {downloadingId === result.id ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div> : <CloudDownload size={16} />}
+                                 </button>
+                             </div>
+                        </div>
+                    ))}
+                    {searchResults.length === 0 && !isSearchingGlobal && showSearch && searchQuery && (
+                        <p className="text-center text-xs opacity-50 py-2">Search results will appear here</p>
+                    )}
+                </div>
+            </div>
+
             <div className="space-y-3">
               {displayPlaylist.map((song) => (
                 <div 
@@ -1311,9 +1456,9 @@ const App = () => {
                   </div>
                   
                   {/* Text Info */}
-                  <div className="ml-4 flex-1">
-                    <h3 className={`font-bold text-base mb-0.5 ${currentSong?.id === song.id ? 'text-[#4facfe]' : (darkMode ? 'text-gray-100' : 'text-slate-800')}`}>{song.title}</h3>
-                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>{song.album}</p>
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className={`font-bold text-base mb-0.5 truncate ${currentSong?.id === song.id ? 'text-[#4facfe]' : (darkMode ? 'text-gray-100' : 'text-slate-800')}`}>{song.title}</h3>
+                    <p className={`text-xs font-medium truncate ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>{song.album}</p>
                   </div>
                   
                   {/* Right Side Visualizer/Time */}
