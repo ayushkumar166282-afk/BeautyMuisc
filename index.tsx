@@ -114,43 +114,7 @@ const loadSongsFromDB = async (): Promise<Song[]> => {
   }
 };
 
-// --- Mock Data ---
-const SERVER_SONGS: Song[] = [
-  {
-    id: '1',
-    title: 'Supersonic',
-    artist: 'Space Mariachi',
-    album: 'Intergalaxy',
-    duration: 184,
-    cover: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop',
-    src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3',
-    color: 'bg-[#4facfe]',
-    source: 'server'
-  },
-  {
-    id: '2',
-    title: 'Ladies Night',
-    artist: 'Vegas Tour',
-    album: 'Fault',
-    duration: 210,
-    cover: 'https://images.unsplash.com/photo-1493225255756-d9584f8606e9?q=80&w=1000&auto=format&fit=crop',
-    src: 'https://cdn.pixabay.com/audio/2022/10/25/audio_55940d99ba.mp3',
-    color: 'bg-[#ff9f43]',
-    source: 'server'
-  },
-  {
-    id: '3',
-    title: 'World Wide',
-    artist: 'Big Ben',
-    album: 'Intergalaxy',
-    duration: 195,
-    cover: 'https://images.unsplash.com/photo-1487180144351-b8472da7d4f1?q=80&w=1000&auto=format&fit=crop',
-    src: 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3',
-    color: 'bg-[#1dd1a1]',
-    source: 'server'
-  },
-];
-
+// --- Data ---
 const ZEN_SOUNDS: Song[] = [
     {
         id: 'zen-1',
@@ -194,27 +158,13 @@ const ZEN_SOUNDS: Song[] = [
     }
 ];
 
+// Start with Zen sounds as default for "Beautiful Nature Music" request
+const DEFAULT_PLAYLIST: Song[] = [...ZEN_SOUNDS];
+
 const MOCK_LYRICS: LyricLine[] = [
     { time: 0, text: "..." },
-    { time: 6, text: "Lost in the echo of the night" },
-    { time: 12, text: "Chasing stars, fading light" },
-    { time: 18, text: "Can you hear the silence calling?" },
-    { time: 24, text: "In the deep, we are falling" },
-    { time: 30, text: "We are the dreamers of the day" },
-    { time: 38, text: "Drifting far, far away" },
-    { time: 46, text: "Underneath the neon sky" },
-    { time: 54, text: "Watching worlds pass us by" },
-    { time: 62, text: "Time is an illusion, a ghost" },
-    { time: 70, text: "Holding on to what we love most" },
-    { time: 78, text: "(Instrumental Break)" },
-    { time: 94, text: "Gravity can't hold us down" },
-    { time: 102, text: "In this universal town" },
-    { time: 110, text: "Let the rhythm guide your soul" },
-    { time: 118, text: "Make you feel, make you whole" },
-    { time: 126, text: "Just close your eyes and breathe" },
-    { time: 134, text: "Believe in what you can't see" },
-    { time: 142, text: "Lost in the echo..." },
-    { time: 150, text: "Of the night..." },
+    { time: 6, text: "(Instrumental / Nature Sound)" },
+    { time: 12, text: "Relax and breathe..." },
 ];
 
 const QUOTES = [
@@ -244,10 +194,10 @@ const formatRulerTime = (time: number) => {
 // --- Components ---
 
 const App = () => {
-  const [playlist, setPlaylist] = useState<Song[]>(SERVER_SONGS);
-  const [currentSong, setCurrentSong] = useState<Song | null>(SERVER_SONGS[0]);
+  const [playlist, setPlaylist] = useState<Song[]>(DEFAULT_PLAYLIST);
+  const [currentSong, setCurrentSong] = useState<Song | null>(DEFAULT_PLAYLIST[0]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [view, setView] = useState<'list' | 'player' | 'landing' | 'ai-studio' | 'lyrics' | 'zen-home' | 'zen-list'>('list');
+  const [view, setView] = useState<'list' | 'player' | 'landing' | 'ai-studio' | 'lyrics' | 'zen-home' | 'zen-list' | 'youtube'>('list');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
@@ -261,10 +211,16 @@ const App = () => {
   const [eqPreset, setEqPreset] = useState('Flat');
   const [showMyUploads, setShowMyUploads] = useState(false);
   
-  // API Key State
+  // API Keys
   const [userApiKey, setUserApiKey] = useState(() => {
       try {
           return localStorage.getItem('space_music_api_key') || '';
+      } catch(e) { return ''; }
+  });
+  
+  const [youtubeApiKey, setYoutubeApiKey] = useState(() => {
+      try {
+          return localStorage.getItem('space_music_yt_key') || '';
       } catch(e) { return ''; }
   });
 
@@ -283,6 +239,14 @@ const App = () => {
 
   // Zen Mode State
   const [zenSearchTerm, setZenSearchTerm] = useState('');
+  
+  // YouTube Mode State
+  const [youtubeSearchTerm, setYoutubeSearchTerm] = useState('');
+  const [youtubeResults, setYoutubeResults] = useState<Song[]>([]);
+  const [isSearchingYoutube, setIsSearchingYoutube] = useState(false);
+  const ytPlayerRef = useRef<any>(null);
+  const ytProgressInterval = useRef<any>(null);
+  const lastYtVideoId = useRef<string | null>(null);
 
   // Quotes
   const [quoteIndex, setQuoteIndex] = useState(0);
@@ -318,6 +282,46 @@ const App = () => {
       const timer = setInterval(() => setCurrentDate(new Date()), 1000);
       return () => clearInterval(timer);
   }, []);
+  
+  // Initialize YouTube IFrame API
+  useEffect(() => {
+      const loadYt = () => {
+          if ((window as any).YT && (window as any).YT.Player) {
+              ytPlayerRef.current = new (window as any).YT.Player('youtube-player', {
+                  height: '1',
+                  width: '1',
+                  playerVars: {
+                      'playsinline': 1,
+                      'controls': 0,
+                      'disablekb': 1,
+                      'origin': window.location.origin
+                  },
+                  events: {
+                      'onStateChange': onYtPlayerStateChange,
+                      'onReady': (event: any) => event.target.setVolume(100),
+                      'onError': (e: any) => console.log('YT Error', e)
+                  }
+              });
+          }
+      };
+
+      if (!(window as any).YT) {
+          const tag = document.createElement('script');
+          tag.src = "https://www.youtube.com/iframe_api";
+          const firstScriptTag = document.getElementsByTagName('script')[0];
+          firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+          (window as any).onYouTubeIframeAPIReady = loadYt;
+      } else {
+          loadYt();
+      }
+  }, []);
+
+  const onYtPlayerStateChange = (event: any) => {
+      // 0 = ENDED, 1 = PLAYING, 2 = PAUSED
+      if (event.data === 0) {
+          nextSong();
+      }
+  };
 
   // Handle Lyrics Update on Song Change
   useEffect(() => {
@@ -367,6 +371,12 @@ const App = () => {
       setUserApiKey(val);
       localStorage.setItem('space_music_api_key', val);
   };
+  
+  const handleYoutubeApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setYoutubeApiKey(val);
+      localStorage.setItem('space_music_yt_key', val);
+  };
 
   // Install
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -400,15 +410,21 @@ const App = () => {
   useEffect(() => {
     let rafId: number;
     const animate = () => {
-        if (ticksRef.current && audioRef.current) {
-            const t = audioRef.current.currentTime || 0;
+        if (ticksRef.current) {
+            // Priority: YouTube time if active, else Audio time
+            let t = 0;
+            if (currentSong?.source === 'youtube' && isPlaying) {
+                 t = currentTime; // Synced via interval
+            } else if (audioRef.current) {
+                 t = audioRef.current.currentTime || 0;
+            }
             ticksRef.current.style.transform = `translateX(-${t * PIXELS_PER_SECOND}px)`;
         }
         rafId = requestAnimationFrame(animate);
     };
     rafId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafId);
-  }, []);
+  }, [currentSong, isPlaying, currentTime]);
 
   useEffect(() => {
     loadSongsFromDB().then(savedSongs => {
@@ -435,60 +451,89 @@ const App = () => {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  // --- Playback Logic Hub ---
   useEffect(() => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        // Validation for empty sources
-        if (!audioRef.current.src && currentSong) {
-             console.log("Empty src, cannot play");
-             setIsPlaying(false);
-             return;
-        }
+    const isYoutube = currentSong?.source === 'youtube';
 
-        if (crossfadeTransitioning.current) {
-            audioRef.current.volume = 0;
-            audioRef.current.play().catch(e => { console.error(e); setIsPlaying(false); });
-            
-            const FADE_DURATION = 4000;
-            const STEPS = 40;
-            const INTERVAL = FADE_DURATION / STEPS;
-            let step = 0;
-            
-            const fadeInterval = setInterval(() => {
-                step++;
-                const progress = step / STEPS;
-                if (audioRef.current) audioRef.current.volume = Math.min(1, progress);
-                if (crossfadeAudioRef.current) crossfadeAudioRef.current.volume = Math.max(0, 1 - progress);
-                
-                if (step >= STEPS) {
-                    clearInterval(fadeInterval);
-                    if (crossfadeAudioRef.current) {
-                        crossfadeAudioRef.current.pause();
-                        crossfadeAudioRef.current.src = ""; 
-                    }
-                    isCrossfading.current = false;
-                }
-            }, INTERVAL);
-            
-            crossfadeTransitioning.current = false;
+    // 1. Handle HTML5 Audio Element
+    if (audioRef.current) {
+        if (isYoutube) {
+             // If we switched to YouTube, pause HTML5 audio immediately
+             audioRef.current.pause();
         } else {
-            audioRef.current.volume = 1;
-            audioRef.current.play().catch(e => { console.error("Playback failed", e); setIsPlaying(false); setNotification({msg: "Cannot play this song.", type: 'error'}); });
+             // Standard Audio File Logic
+             if (isPlaying) {
+                // Ensure src is set before playing (React re-render timing)
+                if (audioRef.current.src !== currentSong?.src && currentSong?.src) {
+                    audioRef.current.src = currentSong.src;
+                }
+
+                if (crossfadeTransitioning.current) {
+                    audioRef.current.play().catch(console.error);
+                } else {
+                    audioRef.current.volume = 1;
+                    audioRef.current.play().catch(e => {
+                        console.error("Playback failed", e);
+                        setIsPlaying(false);
+                    });
+                }
+             } else {
+                 audioRef.current.pause();
+             }
         }
-      } else {
-        audioRef.current.pause();
-      }
     }
+
+    // 2. Handle YouTube Player
+    if (isYoutube && ytPlayerRef.current && ytPlayerRef.current.loadVideoById) {
+         const videoId = currentSong?.src;
+         
+         // If song changed
+         if (videoId !== lastYtVideoId.current) {
+             lastYtVideoId.current = videoId;
+             ytPlayerRef.current.loadVideoById(videoId);
+         }
+         
+         // Handle Play/Pause
+         if (isPlaying) {
+             ytPlayerRef.current.playVideo();
+         } else {
+             ytPlayerRef.current.pauseVideo();
+         }
+    } else if (!isYoutube && ytPlayerRef.current && ytPlayerRef.current.stopVideo) {
+         // Stop YT if we switched away
+         if (lastYtVideoId.current) {
+            ytPlayerRef.current.stopVideo();
+            lastYtVideoId.current = null;
+         }
+    }
+
+    // 3. YouTube Progress Polling
+    if (isYoutube && isPlaying) {
+        ytProgressInterval.current = setInterval(() => {
+            if (ytPlayerRef.current && ytPlayerRef.current.getCurrentTime) {
+                const t = ytPlayerRef.current.getCurrentTime();
+                const d = ytPlayerRef.current.getDuration();
+                setCurrentTime(t);
+                if (d) setDuration(d);
+                handleTimeUpdateForYoutube(t);
+            }
+        }, 500);
+    } else {
+        if (ytProgressInterval.current) clearInterval(ytProgressInterval.current);
+    }
+
+    return () => { if (ytProgressInterval.current) clearInterval(ytProgressInterval.current); };
+
   }, [isPlaying, currentSong]);
 
   // --- MEDIA SESSION & EVENTS ---
   const updatePositionState = () => {
-    if ('mediaSession' in navigator && audioRef.current && !isNaN(audioRef.current.duration)) {
+    if ('mediaSession' in navigator && !isNaN(duration)) {
         try {
             navigator.mediaSession.setPositionState({
-                duration: audioRef.current.duration,
-                playbackRate: audioRef.current.playbackRate,
-                position: audioRef.current.currentTime
+                duration: duration || 0,
+                playbackRate: 1,
+                position: currentTime || 0
             });
         } catch (e) { /* Ignore */ }
     }
@@ -512,10 +557,8 @@ const App = () => {
     navigator.mediaSession.setActionHandler('nexttrack', nextSong);
 
     navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined && audioRef.current) {
-            audioRef.current.currentTime = details.seekTime;
-            setCurrentTime(details.seekTime);
-            updatePositionState();
+        if (details.seekTime !== undefined) {
+             handleSeekRaw(details.seekTime);
         }
     });
 
@@ -526,17 +569,10 @@ const App = () => {
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
       updatePositionState();
     }
-  }, [isPlaying]);
+  }, [isPlaying, currentTime]);
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current && !isDraggingRef.current) {
-      const cur = audioRef.current.currentTime;
-      const dur = audioRef.current.duration || 0;
-      setCurrentTime(cur);
-      setDuration(dur);
-      
-      // Update Active Lyric - ROBUST SYNC LOGIC
-      // Find the last lyric line that has a timestamp less than or equal to current time.
+  // Logic shared between Audio onTimeUpdate and YT Polling
+  const syncLyrics = (cur: number) => {
       const hasSynced = lyrics.some(l => l.time >= 0);
       if (hasSynced) {
           let newActiveIndex = -1;
@@ -544,15 +580,26 @@ const App = () => {
               if (lyrics[i].time >= 0 && lyrics[i].time <= cur) {
                   newActiveIndex = i;
               } else if (lyrics[i].time > cur) {
-                  // Since lyrics are sorted, we can stop early
                   break;
               }
           }
-          
           if (newActiveIndex !== -1 && newActiveIndex !== activeLyricIndex) {
               setActiveLyricIndex(newActiveIndex);
           }
       }
+  };
+
+  const handleTimeUpdateForYoutube = (t: number) => {
+      syncLyrics(t);
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current && !isDraggingRef.current) {
+      const cur = audioRef.current.currentTime;
+      const dur = audioRef.current.duration || 0;
+      setCurrentTime(cur);
+      setDuration(dur);
+      syncLyrics(cur);
       
       if (dur > 10 && (dur - cur) < 4 && !isCrossfading.current && isPlaying) {
           triggerCrossfade();
@@ -565,13 +612,9 @@ const App = () => {
       if (view === 'lyrics' && lyricsContainerRef.current) {
           const hasSynced = lyrics.some(l => l.time >= 0);
           if (hasSynced) {
-              // Access the specific active line element safely
-              // Structure: Wrapper (py-[45vh]) -> Line Divs
               const wrapper = lyricsContainerRef.current.children[0];
               if (wrapper && wrapper.children[activeLyricIndex]) {
                   const activeEl = wrapper.children[activeLyricIndex] as HTMLElement;
-                  
-                  // Use gentle scrollIntoView
                   activeEl.scrollIntoView({ 
                       behavior: 'smooth', 
                       block: 'center',
@@ -596,7 +639,6 @@ const App = () => {
 
   const handleSongEnd = () => {
     if (currentSong?.source === 'zen') {
-        // Loop Zen songs
         if (audioRef.current) {
             audioRef.current.currentTime = 0;
             audioRef.current.play();
@@ -618,9 +660,19 @@ const App = () => {
       setIsPlaying(!isPlaying);
       if (view === 'list') setView('player');
     } else {
+      // Force pause first to ensure src switch happens cleanly for audio elements
+      if (audioRef.current) audioRef.current.pause();
+      
       setCurrentSong(song);
       setIsPlaying(true);
-      if (view !== 'ai-studio' && view !== 'lyrics' && view !== 'zen-home' && view !== 'zen-list') setView('player'); 
+      
+      // If playing from YouTube, do not auto-open player to keep "Audio Only" feel, 
+      // unless user is already in player or landing. 
+      // But user requested "When I click on a song it should play", visual feedback is good.
+      // Keeping logic to open player unless in special views.
+      if (view !== 'ai-studio' && view !== 'lyrics' && view !== 'zen-home' && view !== 'zen-list' && view !== 'youtube') {
+          setView('player');
+      }
     }
   };
 
@@ -664,17 +716,24 @@ const App = () => {
       oscillator.stop(ctx.currentTime + 0.05);
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
-    if (Math.floor(time) !== Math.floor(lastClickValue.current)) {
+  const handleSeekRaw = (time: number) => {
+     if (Math.floor(time) !== Math.floor(lastClickValue.current)) {
         playClick();
         lastClickValue.current = time;
-    }
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
-      updatePositionState();
-    }
+     }
+     if (currentSong?.source === 'youtube' && ytPlayerRef.current) {
+         ytPlayerRef.current.seekTo(time, true);
+         setCurrentTime(time);
+     } else if (audioRef.current) {
+         audioRef.current.currentTime = time;
+         setCurrentTime(time);
+     }
+     updatePositionState();
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    handleSeekRaw(time);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -801,6 +860,60 @@ const App = () => {
       }
       
       setShowContextMenu(false);
+  };
+
+  // --- YouTube Search Logic ---
+  const handleYoutubeSearch = async () => {
+      if (!youtubeSearchTerm.trim()) return;
+      setIsSearchingYoutube(true);
+      setYoutubeResults([]);
+      
+      if (!youtubeApiKey) {
+          setNotification({msg: "YouTube API Key required in Settings.", type: 'error'});
+          setIsSearchingYoutube(false);
+          return;
+      }
+      
+      try {
+          const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(youtubeSearchTerm)}&type=video&key=${youtubeApiKey}`);
+          const data = await res.json();
+          
+          if (data.error) {
+              throw new Error(data.error.message);
+          }
+          
+          const results: Song[] = data.items.map((item: any) => ({
+              id: `yt-${item.id.videoId}`,
+              title: item.snippet.title,
+              artist: item.snippet.channelTitle,
+              album: 'YouTube Music',
+              duration: 240, // API search doesn't return duration without separate detail call, defaulting placeholder
+              cover: item.snippet.thumbnails.high.url,
+              src: item.id.videoId, // Video ID used for src
+              color: 'bg-red-600',
+              source: 'youtube'
+          }));
+          
+          setYoutubeResults(results);
+          
+      } catch (e: any) {
+          console.error("YouTube Search Error", e);
+          setNotification({msg: "Search failed. Check API Key.", type: 'error'});
+      } finally {
+          setIsSearchingYoutube(false);
+      }
+  };
+  
+  const playYoutubeSong = (song: Song) => {
+      // Add to playlist if not exists to allow Prev/Next navigation logic to work if we want a queue
+      // For now, simple play logic:
+      setPlaylist(prev => {
+          if (!prev.find(s => s.id === song.id)) {
+              return [song, ...prev];
+          }
+          return prev;
+      });
+      playSong(song);
   };
 
   // --- Gemini Lyrics Generation ---
@@ -954,7 +1067,7 @@ const App = () => {
           5. Return ONLY JSON.
           `;
 
-          const response = await ai.models.generateContent({
+          const response = await ai.models.generateContent({ 
              model: 'gemini-2.5-flash',
              contents: prompt,
              config: { tools: [{googleSearch: {}}] }
@@ -1091,9 +1204,82 @@ const App = () => {
       )}
 
       <div className="absolute inset-0 z-[100] pointer-events-none opacity-[0.03] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
+      
+      {/* Hidden YouTube Player Container - Audio Only Experience */}
+      {/* 1x1 pixel size to avoid being treated as 'hidden' by some browsers, but essentially invisible */}
+      <div id="youtube-player" className="absolute top-0 left-0 w-[1px] h-[1px] opacity-0 pointer-events-none z-0" />
 
-      <audio ref={audioRef} src={currentSong?.src} onTimeUpdate={handleTimeUpdate} onEnded={handleSongEnd} onLoadedMetadata={() => { handleTimeUpdate(); updatePositionState(); }} crossOrigin="anonymous" loop={currentSong?.source === 'zen'} />
+      {/* HTML5 Audio - CONDITIONAL SRC to avoid YouTube ID errors */}
+      <audio 
+        ref={audioRef} 
+        src={currentSong?.source !== 'youtube' ? currentSong?.src : undefined} 
+        onTimeUpdate={handleTimeUpdate} 
+        onEnded={handleSongEnd} 
+        onLoadedMetadata={() => { handleTimeUpdate(); updatePositionState(); }} 
+        crossOrigin="anonymous" 
+        loop={currentSong?.source === 'zen'} 
+      />
       <audio ref={crossfadeAudioRef} crossOrigin="anonymous" />
+      
+      {/* --- NEW: YouTube Music View --- */}
+      <div className={`absolute inset-0 z-[65] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'youtube' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          {/* Blurred Nature Background */}
+          <div className="absolute inset-0">
+             <img src="https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Forest Blur" />
+             <div className="absolute inset-0 bg-emerald-900/50 backdrop-blur-[50px]"></div>
+          </div>
+          
+          <div className="absolute inset-0 flex flex-col p-6">
+              {/* Header / Search */}
+              <div className="flex items-center gap-4 mb-6 z-10">
+                  <button onClick={() => setView('list')} className="p-3 bg-white/10 backdrop-blur-md rounded-2xl text-white border border-white/20 hover:bg-white/20 transition-all">
+                       <ChevronLeft size={24} />
+                  </button>
+                  <div className="flex-1 relative">
+                       <input 
+                          type="text" 
+                          placeholder="Search songs, artists on YouTube..." 
+                          value={youtubeSearchTerm}
+                          onChange={(e) => setYoutubeSearchTerm(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleYoutubeSearch()}
+                          className="w-full bg-white/10 backdrop-blur-md text-white placeholder-white/50 rounded-2xl p-4 pr-12 outline-none border border-white/10 focus:bg-white/20 transition-all"
+                       />
+                       <button onClick={handleYoutubeSearch} disabled={isSearchingYoutube} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white">
+                           {isSearchingYoutube ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Search size={22} />}
+                       </button>
+                  </div>
+              </div>
+              
+              {/* Results List */}
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 pb-32 z-10">
+                  {youtubeResults.length === 0 && !isSearchingYoutube && (
+                      <div className="flex flex-col items-center justify-center h-full text-white/40">
+                          <Youtube size={64} className="mb-4 opacity-50" />
+                          <p className="text-lg font-medium">Search for music on YouTube</p>
+                          <p className="text-sm">Audio-only experience</p>
+                      </div>
+                  )}
+                  
+                  {youtubeResults.map((song) => (
+                      <div key={song.id} onClick={() => playYoutubeSong(song)} className="flex items-center p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl hover:bg-white/10 cursor-pointer transition-colors group">
+                          <div className="w-16 h-16 rounded-xl overflow-hidden relative flex-shrink-0">
+                              <img src={song.cover} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Play size={24} fill="white" className="text-white" />
+                              </div>
+                          </div>
+                          <div className="ml-4 flex-1 min-w-0">
+                              <h3 className="text-white font-bold text-lg truncate" dangerouslySetInnerHTML={{ __html: song.title }}></h3>
+                              <p className="text-white/60 text-sm truncate">{song.artist}</p>
+                          </div>
+                          <div className="p-2">
+                               {currentSong?.id === song.id && isPlaying ? <Activity size={24} className="text-red-500" /> : <PlayCircle size={24} className="text-white/20 group-hover:text-white transition-colors" />}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      </div>
 
       {/* --- NEW: Zen Mode Home View (Left Image) --- */}
       <div className={`absolute inset-0 z-[65] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'zen-home' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
@@ -1497,6 +1683,17 @@ const App = () => {
                 </div>
               </div>
 
+               {/* NEW: YouTube Music Card */}
+               <div onClick={() => setView('youtube')} className="flex-shrink-0 w-36 h-36 bg-red-600 rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(220,38,38,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                   <Youtube className="text-white" size={20} />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-lg leading-tight">YouTube</p>
+                  <p className="text-white/80 text-xs mt-1 font-medium">Music</p>
+                </div>
+              </div>
+
               {/* NEW: Zen Mode Card */}
               <div onClick={() => setView('zen-home')} className="flex-shrink-0 w-36 h-36 bg-emerald-500 rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(16,185,129,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
                 <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
@@ -1659,7 +1856,7 @@ const App = () => {
       </div>
 
       {/* --- Mini Player (Hidden if landing or ai studio or lyrics or zen) --- */}
-      {currentSong && view !== 'landing' && view !== 'ai-studio' && view !== 'lyrics' && view !== 'zen-home' && view !== 'zen-list' && (
+      {currentSong && view !== 'landing' && view !== 'ai-studio' && view !== 'lyrics' && view !== 'zen-home' && view !== 'zen-list' && view !== 'youtube' && (
          <div 
             onClick={() => setView('player')}
             className={`absolute bottom-6 left-6 right-6 z-40 bg-white/80 backdrop-blur-xl border border-white/40 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.1)] rounded-3xl p-2.5 flex items-center cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform 
@@ -1806,6 +2003,24 @@ const App = () => {
                     />
                     <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                         Required for AI lyrics search & sync. Key is stored locally on your device.
+                    </p>
+                </div>
+                
+                {/* YouTube API Key Input */}
+                <div className="pt-4 border-t border-gray-200/20">
+                    <div className="flex items-center gap-2 mb-3">
+                         <div className={`p-1.5 rounded-lg ${darkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-100 text-red-600'}`}><Youtube size={16} /></div>
+                         <h3 className={`text-sm font-bold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>YouTube API Key</h3>
+                    </div>
+                    <input 
+                        type="password" 
+                        value={youtubeApiKey}
+                        onChange={handleYoutubeApiKeyChange}
+                        placeholder="Paste YouTube Data API Key..."
+                        className={`w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-red-500 transition-all font-mono text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-200 text-gray-800'}`}
+                    />
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Required for YouTube Music Search. Key stored locally.
                     </p>
                 </div>
             </div>
