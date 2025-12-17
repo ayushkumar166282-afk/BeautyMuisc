@@ -6,7 +6,8 @@ import {
   Disc, Mic2, Music, Download, X, Share, Menu,
   Moon, Activity, Folder, ChevronDown, Youtube, LogIn,
   BarChart2, PlayCircle, Home, Sparkles, Wand2, Save,
-  RefreshCw, FileAudio, Globe, Trash2, ListPlus, Key, Search, CloudDownload, CheckCircle2, AlertCircle
+  RefreshCw, FileAudio, Globe, Trash2, ListPlus, Key, Search, CloudDownload, CheckCircle2, AlertCircle,
+  Wind, CloudRain, Waves, Mountain, Leaf
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -25,7 +26,7 @@ interface Song {
   cover: string;
   src: string;
   color?: string;
-  source?: 'local' | 'server' | 'youtube' | 'ai' | 'searched'; // Track source
+  source?: 'local' | 'server' | 'youtube' | 'ai' | 'searched' | 'zen'; // Track source
   // For DB storage
   fileBlob?: Blob;
   lyrics?: LyricLine[];
@@ -150,6 +151,49 @@ const SERVER_SONGS: Song[] = [
   },
 ];
 
+const ZEN_SOUNDS: Song[] = [
+    {
+        id: 'zen-1',
+        title: 'Forest Morning',
+        artist: 'Nature',
+        album: 'Zen Mode',
+        duration: 999,
+        cover: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=1000&auto=format&fit=crop',
+        src: 'https://actions.google.com/sounds/v1/nature/forest_morning.ogg', // Reliable Google Source
+        source: 'zen'
+    },
+    {
+        id: 'zen-2',
+        title: 'The Bahamas',
+        artist: 'Ocean',
+        album: 'Zen Mode',
+        duration: 999,
+        cover: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop',
+        src: 'https://actions.google.com/sounds/v1/water/waves_crashing.ogg', // Reliable Google Source
+        source: 'zen'
+    },
+    {
+        id: 'zen-3',
+        title: 'Switzerland',
+        artist: 'Alps Stream',
+        album: 'Zen Mode',
+        duration: 999,
+        cover: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?q=80&w=1000&auto=format&fit=crop', // Working Alps Image
+        src: 'https://actions.google.com/sounds/v1/water/stream_flowing.ogg', // Reliable Google Source
+        source: 'zen'
+    },
+    {
+        id: 'zen-4',
+        title: 'Rainy Night',
+        artist: 'Storm',
+        album: 'Zen Mode',
+        duration: 999,
+        cover: 'https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?q=80&w=1000&auto=format&fit=crop',
+        src: 'https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg', // Reliable Google Source
+        source: 'zen'
+    }
+];
+
 const MOCK_LYRICS: LyricLine[] = [
     { time: 0, text: "..." },
     { time: 6, text: "Lost in the echo of the night" },
@@ -203,10 +247,13 @@ const App = () => {
   const [playlist, setPlaylist] = useState<Song[]>(SERVER_SONGS);
   const [currentSong, setCurrentSong] = useState<Song | null>(SERVER_SONGS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [view, setView] = useState<'list' | 'player' | 'landing' | 'ai-studio' | 'lyrics'>('list');
+  const [view, setView] = useState<'list' | 'player' | 'landing' | 'ai-studio' | 'lyrics' | 'zen-home' | 'zen-list'>('list');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
+  // Real-time Clock for Zen Mode
+  const [currentDate, setCurrentDate] = useState(new Date());
+
   // Settings
   const [showSettings, setShowSettings] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -233,6 +280,9 @@ const App = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
+
+  // Zen Mode State
+  const [zenSearchTerm, setZenSearchTerm] = useState('');
 
   // Quotes
   const [quoteIndex, setQuoteIndex] = useState(0);
@@ -262,6 +312,12 @@ const App = () => {
   useEffect(() => {
       localStorage.setItem('space_music_liked_ids', JSON.stringify(Array.from(likedIds)));
   }, [likedIds]);
+
+  // Update Clock
+  useEffect(() => {
+      const timer = setInterval(() => setCurrentDate(new Date()), 1000);
+      return () => clearInterval(timer);
+  }, []);
 
   // Handle Lyrics Update on Song Change
   useEffect(() => {
@@ -539,7 +595,13 @@ const App = () => {
   };
 
   const handleSongEnd = () => {
-    if (!isCrossfading.current) {
+    if (currentSong?.source === 'zen') {
+        // Loop Zen songs
+        if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.play();
+        }
+    } else if (!isCrossfading.current) {
         nextSong();
     }
   };
@@ -558,7 +620,7 @@ const App = () => {
     } else {
       setCurrentSong(song);
       setIsPlaying(true);
-      if (view !== 'ai-studio' && view !== 'lyrics') setView('player'); 
+      if (view !== 'ai-studio' && view !== 'lyrics' && view !== 'zen-home' && view !== 'zen-list') setView('player'); 
     }
   };
 
@@ -1013,6 +1075,10 @@ const App = () => {
       playSong(savedSong);
   };
 
+  const playZenSound = (song: Song) => {
+      playSong(song);
+  };
+
   return (
     <div className={`relative w-full h-full overflow-hidden font-sans antialiased transition-colors duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${darkMode ? 'bg-slate-900' : 'bg-[#F2F6FF]'}`}>
       
@@ -1026,8 +1092,90 @@ const App = () => {
 
       <div className="absolute inset-0 z-[100] pointer-events-none opacity-[0.03] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
 
-      <audio ref={audioRef} src={currentSong?.src} onTimeUpdate={handleTimeUpdate} onEnded={handleSongEnd} onLoadedMetadata={() => { handleTimeUpdate(); updatePositionState(); }} crossOrigin="anonymous" />
+      <audio ref={audioRef} src={currentSong?.src} onTimeUpdate={handleTimeUpdate} onEnded={handleSongEnd} onLoadedMetadata={() => { handleTimeUpdate(); updatePositionState(); }} crossOrigin="anonymous" loop={currentSong?.source === 'zen'} />
       <audio ref={crossfadeAudioRef} crossOrigin="anonymous" />
+
+      {/* --- NEW: Zen Mode Home View (Left Image) --- */}
+      <div className={`absolute inset-0 z-[65] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'zen-home' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          <div className="absolute inset-0">
+             <img src="https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Elephant" />
+             <div className="absolute inset-0 bg-black/30"></div>
+          </div>
+          
+          <div className="absolute inset-0 flex flex-col p-6 text-white font-sans">
+              <div className="flex justify-between items-center mt-2">
+                  <button onClick={() => setView('list')} className="p-2 bg-white/10 backdrop-blur-md rounded-full"><Menu size={24} /></button>
+                  <h1 className="text-[8rem] font-light leading-none opacity-40 mix-blend-overlay absolute top-4 left-1/2 -translate-x-1/2 font-sans tracking-tighter">
+                      {currentDate.getDate().toString().padStart(2, '0')}
+                  </h1>
+                  <button onClick={() => setView('zen-list')} className="p-2 bg-white/10 backdrop-blur-md rounded-full hover:bg-white/20 transition-colors"><Search size={24} /></button>
+              </div>
+
+              <div className="flex-1 flex flex-col justify-end pb-12">
+                  <button 
+                    onClick={() => playZenSound(ZEN_SOUNDS[0])}
+                    className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-6 hover:scale-105 active:scale-95 transition-transform shadow-2xl"
+                  >
+                      {currentSong?.id === ZEN_SOUNDS[0].id && isPlaying ? <Pause size={24} fill="black" className="text-black" /> : <Play size={24} fill="black" className="text-black ml-1" />}
+                  </button>
+                  <h2 className="text-4xl font-bold leading-tight max-w-[80%] mb-4 drop-shadow-lg">Amazing<br/>corners<br/>of the<br/>planet</h2>
+                  <p className="text-sm font-medium opacity-80 uppercase tracking-widest">
+                    {currentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, {currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </p>
+              </div>
+          </div>
+      </div>
+
+      {/* --- NEW: Zen Mode Search View (Right Image) --- */}
+      <div className={`absolute inset-0 z-[66] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'zen-list' ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none translate-y-10'}`}>
+          {/* Blurry Background */}
+          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-[40px]">
+             {/* Gradient orbs for depth */}
+             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-teal-500/30 rounded-full blur-[100px]"></div>
+             <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/30 rounded-full blur-[100px]"></div>
+          </div>
+
+          <div className="absolute inset-0 flex flex-col p-6">
+              {/* Search Bar */}
+              <div className="relative mb-8 mt-2">
+                  <button onClick={() => setView('zen-home')} className="absolute left-0 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white z-10"><ChevronLeft size={24} /></button>
+                  <div className="w-full bg-white/10 backdrop-blur-md rounded-2xl h-14 flex items-center px-12 border border-white/5">
+                      <input 
+                        type="text" 
+                        placeholder="Search ..." 
+                        value={zenSearchTerm}
+                        onChange={(e) => setZenSearchTerm(e.target.value)}
+                        className="bg-transparent w-full text-white placeholder-white/40 outline-none text-lg"
+                      />
+                  </div>
+                  <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40" size={20} />
+              </div>
+
+              {/* Cards List */}
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 pb-10">
+                  {ZEN_SOUNDS.filter(s => s.title.toLowerCase().includes(zenSearchTerm.toLowerCase())).map((sound, index) => (
+                      <div key={sound.id} className="relative h-48 rounded-[2rem] overflow-hidden group cursor-pointer shadow-lg" onClick={() => playZenSound(sound)}>
+                          <img src={sound.cover} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                          
+                          {/* Number */}
+                          <div className="absolute top-4 right-6 text-6xl font-bold text-white/10 font-sans">0{index + 2}</div>
+                          
+                          {/* Content */}
+                          <div className="absolute bottom-6 left-6 text-white">
+                               <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center mb-3 border border-white/20">
+                                   {currentSong?.id === sound.id && isPlaying ? <Pause size={20} fill="white" /> : <Play size={20} fill="white" className="ml-1" />}
+                               </div>
+                               <h3 className="text-xl font-bold mb-1">{sound.title}</h3>
+                               <p className="text-xs opacity-70 flex items-center gap-1">
+                                 {currentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, {currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                               </p>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      </div>
 
       {/* --- NEW: AI Studio View --- */}
       <div className={`absolute inset-0 z-[65] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${view === 'ai-studio' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
@@ -1349,6 +1497,17 @@ const App = () => {
                 </div>
               </div>
 
+              {/* NEW: Zen Mode Card */}
+              <div onClick={() => setView('zen-home')} className="flex-shrink-0 w-36 h-36 bg-emerald-500 rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(16,185,129,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                   <Leaf className="text-white" size={20} />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-lg leading-tight">Zen Mode</p>
+                  <p className="text-white/80 text-xs mt-1 font-medium">Relax & Focus</p>
+                </div>
+              </div>
+
                {/* Searched & Downloaded Card - DYNAMIC */}
                {searchedSongs.length > 0 && (
                   <div className="flex-shrink-0 w-36 h-36 bg-indigo-500 rounded-[1.5rem] p-5 flex flex-col justify-between shadow-[0_10px_20px_-5px_rgba(99,102,241,0.4)] relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform">
@@ -1499,8 +1658,8 @@ const App = () => {
         </div>
       </div>
 
-      {/* --- Mini Player (Hidden if landing or ai studio or lyrics) --- */}
-      {currentSong && view !== 'landing' && view !== 'ai-studio' && view !== 'lyrics' && (
+      {/* --- Mini Player (Hidden if landing or ai studio or lyrics or zen) --- */}
+      {currentSong && view !== 'landing' && view !== 'ai-studio' && view !== 'lyrics' && view !== 'zen-home' && view !== 'zen-list' && (
          <div 
             onClick={() => setView('player')}
             className={`absolute bottom-6 left-6 right-6 z-40 bg-white/80 backdrop-blur-xl border border-white/40 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.1)] rounded-3xl p-2.5 flex items-center cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform 
